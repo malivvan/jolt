@@ -144,7 +144,9 @@ type Config struct {
 	Features []Feature
 	// WebAssembly configures the WebAssembly JavaScript API. The API is
 	// installed when canopy is built with the "canopy_wasm" build tag and
-	// this option is not disabled. See WebAssemblySupported.
+	// this option is not disabled. The WASI host module is loaded and its
+	// per-guest environment is taken from WebAssembly.WASI. See
+	// WebAssemblySupported.
 	WebAssembly WebAssemblyOptions
 
 	// ------------------------------------------------------------------

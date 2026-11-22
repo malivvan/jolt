@@ -194,7 +194,7 @@ or `SourceFile` is set.
 | Features | `FS`, `Network`, `Features` |
 | Modules | `Modules`, `Loader`, `ModuleFS`, `ModuleRoot`, `Resolve`, `Importer` |
 | Exposure | `Globals`, `Functions`, `Console`, `DisableConsole` |
-| WebAssembly | `WebAssembly` (`Disable`, `MemoryLimitPages`); requires the `canopy_wasm` build tag |
+| WebAssembly | `WebAssembly` (`Disable`, `MemoryLimitPages`, `WASI`: `Disable`, `Args`, `Env`, `FS`, `Stdin`, `Stdout`, `Stderr`, `Rand`, `RunStart`); requires the `canopy_wasm` build tag |
 | Pool | `PoolSize`, `MaxIdle`, `NoReuse` |
 | Hooks | `OnRuntimeReady`, `OnRuntimeClose` |
 
@@ -319,10 +319,46 @@ Supported:
 - live `memory.buffer` views and `memory.grow`
 
 The wazero manager is configured like a browser: Core 2.0 features, a 4 GiB
-memory ceiling, no WASI, no host file system, no environment or stdio, and no
-automatic `_start`. A caller's context still cancels a running wasm function,
-and `Config.WebAssembly.MemoryLimitPages` can lower the 65536-page ceiling.
+memory ceiling, and no automatic `_start` (set `WASI.RunStart` to run it). A
+caller's context still cancels a running wasm function, and
+`Config.WebAssembly.MemoryLimitPages` can lower the 65536-page ceiling.
 `Config.WebAssembly.Disable` leaves the global out even in a tagged build.
+
+### WASI
+
+The `wasi_snapshot_preview1` host module is loaded automatically, so a module
+that imports WASI instantiates without the JavaScript caller supplying those
+imports. A user-supplied `wasi_snapshot_preview1` object in `importObject` is
+ignored; the host-managed namespace always wins.
+
+Each guest that imports WASI gets its environment from the Go config:
+
+```go
+exec, err := canopy.New(canopy.Config{
+	WebAssembly: canopy.WebAssemblyOptions{
+		WASI: canopy.WebAssemblyWASIOptions{
+			Args:   []string{"app", "--flag"},
+			Env:    map[string]string{"MODE": "prod"},
+			FS:     os.DirFS("/srv/app"),
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+			Rand:   rand.Reader,
+			RunStart: true, // run _start at instantiation
+		},
+	},
+	Source: `export async function run(bytes) {
+		await WebAssembly.instantiate(bytes, {});
+		return "ok";
+	}`,
+})
+```
+
+Defaults are sandboxed: no arguments, no environment, no host file system, no
+stdio, no clocks, and wazero's deterministic `random_get` source. Set
+`WebAssembly.WASI.Disable` to leave the host module unloaded. `RunStart` is off
+by default, keeping browser semantics; a command module can instead call
+`instance.exports._start()` itself. `proc_exit(0)` is treated as success and a
+non-zero exit becomes a `RuntimeError`. `wasi_unstable` is not loaded.
 
 Known limits of wazero's public API: `WebAssembly.Table` is present for API
 shape, but `get`/`set`/`grow` throw and imported tables are rejected with a
@@ -378,8 +414,10 @@ Canopy passes moejs's defenses through `Config`:
   each request, redirects included.
 - `NoFS`/`NoNetwork` are the safe defaults.
 - WebAssembly is compiled in only with `-tags canopy_wasm`; it runs in wazero
-  with no WASI, file system or network, and honors
-  `Config.WebAssembly.MemoryLimitPages`.
+  with WASI loaded but sandboxed by default (no args, environment, file system,
+  stdio or clocks, and deterministic randomness) and honors
+  `Config.WebAssembly.MemoryLimitPages`. `Config.WebAssembly.WASI` exposes host
+  state deliberately; treat a non-empty `FS` or real `Stdout` as capabilities.
 
 Do not run untrusted code with `Config.Importer`, `Config.Resolve` or a custom
 module loader that exposes host files or modules you did not intend to expose.

@@ -112,8 +112,17 @@
 // binary has the feature.
 //
 // The manager is configured like a browser: WebAssembly Core 2.0 features, a
-// 4 GiB memory ceiling, no WASI, no host file system, no environment or stdio,
-// and no automatic "_start". Config.WebAssembly.Disable leaves the global out;
+// 4 GiB memory ceiling, and no automatic "_start" unless
+// Config.WebAssembly.WASI.RunStart is set. The WASI host module
+// ("wasi_snapshot_preview1") is loaded automatically, so WASI-targeting
+// modules instantiate without the JavaScript caller supplying WASI imports;
+// Config.WebAssembly.WASI.Disable turns that off. A guest that imports WASI
+// gets its environment from Config.WebAssembly.WASI: Args, Env, FS, Stdin,
+// Stdout, Stderr and Rand. Defaults are deliberately sandboxed: no arguments,
+// no environment, no host file system, no stdio, and deterministic
+// randomness.
+//
+// Config.WebAssembly.Disable leaves the global out;
 // Config.WebAssembly.MemoryLimitPages lowers the memory ceiling. JavaScript
 // gets Module, Instance, Memory, Global, Table, compile, instantiate, validate,
 // the streaming variants, the Error classes, and Module.exports/imports/

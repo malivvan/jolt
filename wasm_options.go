@@ -59,3 +59,11 @@ type WebAssemblyWASIOptions struct {
 	// browser default is to leave it to the caller.
 	RunStart bool
 }
+
+// configured reports whether the caller asked for any WASI behavior. Disable
+// on its own is not counted: without the build tag WASI is absent anyway.
+func (o WebAssemblyWASIOptions) configured() bool {
+	return len(o.Args) > 0 || len(o.Env) > 0 || o.FS != nil ||
+		o.Stdin != nil || o.Stdout != nil || o.Stderr != nil ||
+		o.Rand != nil || o.RunStart
+}
