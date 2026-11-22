@@ -3,6 +3,49 @@
 Converted from `WAZERO.md` (research findings) into an execution plan. All code
 lives behind the `canopy_wasm` build tag. Target: wazero `v1.12.0` (pinned).
 
+## Execution status (2026-11-23)
+
+**All four phases are implemented and verified.** Commits:
+
+| Commit | Contents |
+| --- | --- |
+| `4e39ac5` | prerequisite: repair the module rename and build-tag layout (see below) |
+| `f019191` | Phase A — options, eager host module, import skipping, guest `ModuleConfig` |
+| `a68496a` | Phase B — `RunStart` and `proc_exit` mapping |
+| `7623d66` | Phase C — `doc.go`, `README.md`, `wasm_off.go` |
+| `0d2078e` | Phase D — `wasm_wasi_test.go` |
+
+Prerequisite work that was not in the plan: the tree did not compile as
+committed. Tests and examples still imported the old `canopy` package path,
+`js_test.go` was `package js` while importing itself, and every file carried
+the same `wazero && !(js && wasm)` build tag, so the package did not build
+untagged and `wasm.go` clashed with `wasm_off.go`. `4e39ac5` fixes those
+without changing behavior: core files are untagged, the WebAssembly files are
+gated by `canopy_wasm && !(js && wasm)`, and `wasm_off.go` has the complement.
+
+Deviations from the plan as written:
+
+- The hand-assembled test modules give `_start` its own `() -> ()` type
+  instead of reusing `args_get`'s `(i32, i32) -> i32`. Both work, but the
+  correct signature keeps `RunStart`'s zero-argument `Call` unambiguous.
+- Phase B was implemented, so the optional `RunStart` test is included.
+- Phase D has seven tests rather than two: it also covers args reaching guest
+  memory, `RunStart`, `proc_exit(0)`, non-zero `proc_exit`, and `Disable`.
+- Step 7's optional `wasm_off.go` guard was implemented
+  (`WebAssemblyWASIOptions.configured`).
+
+Verification run at the end of every phase:
+
+```sh
+go build ./...
+go build -tags canopy_wasm ./...
+go vet -tags canopy_wasm ./...
+go test ./...
+go test -tags canopy_wasm ./...
+```
+
+All pass. Remaining follow-ups are listed in `POST.md`.
+
 ## Objective
 
 Make the `WebAssembly` backend **always load the WASI host module**, so a wasm
@@ -41,6 +84,9 @@ go test -tags canopy_wasm ./...
 
 ### Step 1. Extend `WebAssemblyOptions` (`wasm_options.go`)
 
+**Status: done** (`f019191`). The struct matches the plan; `configured()` was
+added later for the untagged guard.
+
 Add imports `io` and `io/fs`, and a nested WASI options struct.
 
 ```go
@@ -76,6 +122,8 @@ type WebAssemblyWASIOptions struct {
 ```
 
 ### Step 2. Thread WASI state into `wasmState` and load the host module (`wasm.go`)
+
+**Status: done** (`f019191`). Eager instantiation, as written.
 
 2a. Add the import (same module already in `go.mod`, no new dependency):
 
@@ -123,6 +171,8 @@ no separate `api.Closer` bookkeeping is needed.
 
 ### Step 3. Host-namespace detection helpers (`wasm.go`)
 
+**Status: done** (`f019191`).
+
 Add two small methods next to the other `wasmState` helpers:
 
 ```go
@@ -147,6 +197,8 @@ func (s *wasmState) usesWASI(m *wasmModule) bool {
 ```
 
 ### Step 4. Skip host-managed imports in `prepareImports` (`wasm.go`)
+
+**Status: done** (`f019191`).
 
 This is the critical change (WAZERO.md §6.2): `prepareImports` currently throws
 a `LinkError` for every import whose module is missing from `importObject`, so
@@ -177,6 +229,8 @@ With all host imports skipped, `resolved` contains only JS namespaces and
 wazero's store lookup satisfies WASI.
 
 ### Step 5. Attach the WASI environment to the guest `ModuleConfig` (`wasm.go`)
+
+**Status: done** (`f019191`).
 
 In `instantiate`, replace the inline
 `wazero.NewModuleConfig().WithName(name).WithStartFunctions()` with a config
@@ -222,6 +276,8 @@ still compile (`wasm_off.go` only reads `Disable`/`MemoryLimitPages`).
 
 ### Step 6. `RunStart` + `proc_exit` mapping
 
+**Status: done** (`a68496a`). Optional follow-ups remain out of scope.
+
 If `s.wasi.RunStart` is true and the module uses WASI, run `_start` right after
 instantiation in `instantiate`, before building the JS exports, and translate
 `*sys.ExitError` (WAZERO.md §4.4). Add the import
@@ -256,6 +312,8 @@ Notes:
 
 ### Step 7. Update docs
 
+**Status: done** (`7623d66`). The optional `wasm_off.go` guard was implemented.
+
 - `doc.go` (WebAssembly section, ~lines 102-122): replace "no WASI, no host
   file system, no environment or stdio" with a description of WASI support and
   the new `Config.WebAssembly.WASI` options.
@@ -271,6 +329,10 @@ Notes:
 ## Phase D — tests
 
 ### Step 8. Add `wasm_wasi_test.go` (build-tagged `canopy_wasm`)
+
+**Status: done** (`0d2078e`). The file uses the build tag
+`canopy_wasm && !(js && wasm)`; see the deviations note above for the extra
+tests and the `_start` signature change.
 
 Reuse the existing binary-builder helpers in `wasm_test.go`
 (`testModule`, `testTypeSection`, `testImportSection`, `testFunctionSection`,
