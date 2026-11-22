@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"canopy"
+	canopy "github.com/malivvan/js"
 )
 
 const source = `

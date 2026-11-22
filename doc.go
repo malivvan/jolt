@@ -145,6 +145,4 @@
 // path to its Root, and HostNetwork with no Client has no network. Both
 // accept Allow hooks. Do not run untrusted code with NoFS/NoNetwork replaced
 // by an unrestricted feature.
-//go:build wazero && !(js && wasm)
-
 package js

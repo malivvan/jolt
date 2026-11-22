@@ -1,5 +1,3 @@
-//go:build wazero && !(js && wasm)
-
 package js_test
 
 import (
@@ -13,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"canopy"
+	canopy "github.com/malivvan/js"
 )
 
 func TestDecodeLimits(t *testing.T) {

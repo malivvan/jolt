@@ -1,4 +1,4 @@
-//go:build wazero && !(js && wasm)
+//go:build !canopy_wasm || (js && wasm)
 
 package js
 

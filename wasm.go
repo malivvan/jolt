@@ -1,4 +1,4 @@
-//go:build wazero && !(js && wasm)
+//go:build canopy_wasm && !(js && wasm)
 
 // This file implements the browser WebAssembly JavaScript API on top of
 // wazero. It is compiled only with the "canopy_wasm" build tag.

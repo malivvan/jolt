@@ -1,5 +1,3 @@
-//go:build wazero && !(js && wasm)
-
 package js
 
 // WebAssemblyOptions configures the WebAssembly JavaScript API.

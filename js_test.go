@@ -1,6 +1,4 @@
-//go:build wazero && !(js && wasm)
-
-package js
+package js_test
 
 import (
 	"bytes"
@@ -18,7 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/malivvan/js"
+	js "github.com/malivvan/js"
 )
 
 func newExec(t *testing.T, cfg js.Config) *js.Executor {
@@ -326,12 +324,12 @@ export function bad() { throw new TypeError("bad input"); }`,
 	if err == nil {
 		t.Fatalf("fail returned no error")
 	}
-	var js *js.JSError
-	if !errors.As(err, &js) {
+	var jsErr *js.JSError
+	if !errors.As(err, &jsErr) {
 		t.Fatalf("fail error is %T, want *JSError: %v", err, err)
 	}
-	if js.Name != "RangeError" || js.Message != "nope" {
-		t.Fatalf("JS error = %+v", js)
+	if jsErr.Name != "RangeError" || jsErr.Message != "nope" {
+		t.Fatalf("JS error = %+v", jsErr)
 	}
 
 	_, err = ex.Call(ctx, "bad")

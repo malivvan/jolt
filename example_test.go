@@ -1,12 +1,10 @@
-//go:build wazero && !(js && wasm)
-
 package js_test
 
 import (
 	"context"
 	"fmt"
 
-	"canopy"
+	canopy "github.com/malivvan/js"
 )
 
 func ExampleNew() {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"canopy"
+	canopy "github.com/malivvan/js"
 )
 
 func main() {
