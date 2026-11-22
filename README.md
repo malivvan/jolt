@@ -1,0 +1,413 @@
+# canopy
+
+A developer-focused JavaScript executor for Go, built on
+[moejs](https://github.com/MoeForge/moejs).
+
+Canopy turns moejs's low-level engine API into a small, ergonomic library:
+
+- **One `Config` for everything** — source, engine limits, event loop, sandbox,
+  imports, pool size and hooks.
+- **Expose Go the easy way** — `SetFunc`, `SetNamespace`, `Set`, and
+  `Config.Globals` accept ordinary Go funcs, maps and structs; no
+  `moejs.NativeFunc` plumbing required.
+- **Reach JavaScript the easy way** — `Call`, `CallInto`, `Get`, `Func`, plus
+  `Value` and `Function` handles when the Go side drives several calls.
+- **Compose the runtime** — choose the file system (`HostFS`, `NoFS`, your
+  own), the network (`HostNetwork`, `NoNetwork`, your own), and any other
+  `Feature`.
+- **Run it concurrently** — `Executor` compiles the program once and serves
+  calls from a bounded pool of runtimes.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"canopy"
+)
+
+func main() {
+	exec, err := canopy.New(canopy.Config{
+		Name: "greet.js",
+		Source: `
+export function greet(name) {
+  return utils.prefix + " " + name.trim();
+}`,
+		Globals: map[string]any{
+			"utils": map[string]any{"prefix": "hello"},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer exec.Close()
+
+	out, err := exec.Call(context.Background(), "greet", "  world  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(out) // hello world
+}
+```
+
+> The module is named `canopy` in this workspace. Change the `module` line in
+> `go.mod` (and the import paths) to your repository before publishing.
+
+## Exposing Go to JavaScript
+
+### Functions
+
+`SetFunc` and `Config.Functions` register a Go function as a global host
+function. The wrapper understands any function whose parameters and results
+are JSON-shaped Go values:
+
+```go
+rt.SetFunc("sum", func(a, b int) int { return a + b })
+
+rt.SetFunc("find", func(ctx context.Context, q Query) ([]Result, error) {
+	return db.Find(ctx, q) // ctx ends when the JavaScript call is interrupted
+})
+
+rt.SetFunc("logf", func(format string, args ...any) {
+	fmt.Printf(format, args...)
+})
+```
+
+The supported signatures are:
+
+```go
+func(...)                 // no result
+func(...) T               // T is converted to JavaScript
+func(...) (T, error)      // error throws to JavaScript
+func(...) error           // a non-nil error throws
+```
+
+A parameter may be:
+
+| Go type | Receives |
+| --- | --- |
+| `context.Context` | the context of the running call (first parameter or any position) |
+| `*canopy.Runtime` | the runtime, for callbacks during the call |
+| `*moejs.Realm` | the engine realm |
+| `moejs.Value` | the raw JavaScript value |
+| `*canopy.Value` | a canopy value handle |
+| `*moejs.Object` | the raw object value |
+| any other Go type | decoded from the JavaScript value, with structs and maps using their `json` tags |
+
+Variadic parameters work. A Go panic is recovered and thrown as a JavaScript
+`Error` (and exposed to Go as `*canopy.PanicError`). Named functions from
+different runtimes are rejected, as moejs requires.
+
+### Values and namespaces
+
+`SetNamespace` recursively converts a map, including nested maps, slices,
+funcs and `*Value` handles:
+
+```go
+rt.SetNamespace("host", map[string]any{
+	"version": "1.2.3",
+	"flags":   []string{"a", "b"},
+	"add":     func(a, b int) int { return a + b },
+})
+```
+
+`Set`/`SetPath` install one value and create nested objects as needed:
+
+```go
+rt.Set("host.timeout", 30*time.Second)
+rt.SetPath("host.limits.maxBytes", 1<<20)
+```
+
+`Config.Globals` and `Config.Functions` do the same for every runtime at
+creation, before the program is loaded.
+
+## Accessing JavaScript from Go
+
+### Calls
+
+```go
+// A path is resolved in module exports first, then in globals.
+out, err := exec.Call(ctx, "buildRequest", task)
+
+// Decode straight into a Go value.
+var req Request
+err = exec.CallInto(ctx, "buildRequest", &req, task)
+```
+
+Unless `Config.DisableAwaitPromises` is set, a returned promise is awaited on
+the runtime's event loop. A rejection becomes a `*canopy.JSError`; a
+synchronous `throw` remains a `*canopy.Exception` (an alias for
+`moejs.Exception`).
+
+A call runs the event loop until no referenced timer, immediate, task or held
+promise remains. Pass a context (or set `Config.DefaultTimeout`) to bound a
+program that never goes idle.
+
+### Values and functions
+
+For several calls against one JavaScript state, lease a runtime:
+
+```go
+err := exec.Run(ctx, func(rt *canopy.Runtime) error {
+	// Module export or global.
+	config, err := rt.Get("config")
+	if err != nil {
+		return err
+	}
+	retries, err := config.Get("retries")
+	if err != nil {
+		return err
+	}
+	n, err := retries.Int()
+
+	// Resolve a function once and call it many times.
+	add, err := rt.Func("makeAdder")
+	if err != nil {
+		return err
+	}
+	add5, err := add.Call(ctx, 5)
+	if err != nil {
+		return err
+	}
+	sum, err := add5.Call(ctx, 37) // 42
+	return err
+})
+```
+
+`Value` offers `ToGo`, `Into`, `Text`, `Bool`, `Int`, `Float`, `Type`,
+`IsNull`, `IsUndefined`, `IsFunction`, `IsArray`, `IsPromise`, `Get`, `Set`,
+`Call`, `CallMethod` and `Await`. `Function` wraps a resolved callable.
+
+## Config
+
+`Config` is intentionally broad. The zero value is usable as long as `Source`
+or `SourceFile` is set.
+
+| Group | Fields |
+| --- | --- |
+| Source | `Name`, `Source`, `SourceFile`, `TypeScript`, `Mode` (`ModeAuto`, `ModeModule`, `ModeScript`) |
+| Engine | `TimeZone`, `Locale`, `MemoryLimit`, `MutableIntrinsics`, `MaxDynamicSource`, `DisableDynamicCode` |
+| Compilation / execution | `CompileTimeout`, `DefaultTimeout`, `DisableAwaitPromises`, `Decode` (`MaxBytes`, `MaxNodes`) |
+| Event loop | `OnLoopError`, `ResetMemoryPerTask`, `OnIdle`, `OnWake`, `OnUnhandledRejection` |
+| Features | `FS`, `Network`, `Features` |
+| Modules | `Modules`, `Loader`, `ModuleFS`, `ModuleRoot`, `Resolve`, `Importer` |
+| Exposure | `Globals`, `Functions`, `Console`, `DisableConsole` |
+| WebAssembly | `WebAssembly` (`Disable`, `MemoryLimitPages`); requires the `canopy_wasm` build tag |
+| Pool | `PoolSize`, `MaxIdle`, `NoReuse` |
+| Hooks | `OnRuntimeReady`, `OnRuntimeClose` |
+
+Defaults:
+
+- ES module; `.ts`/`.mts`/`.cts`/`.tsx` names are TypeScript automatically.
+- `PoolSize` = `GOMAXPROCS`; `MaxIdle` = `PoolSize`.
+- A returned promise is awaited.
+- No file system (`NoFS`), no network/Web APIs (`NoNetwork`).
+- Timers and the event loop are always installed.
+- A `console` global is installed; its output goes to `Config.Console` (nil
+  discards it). Set `DisableConsole` to remove it.
+- Builtins are shared, frozen and read-only (`MutableIntrinsics` opts out).
+- `MaxDynamicSource` and `MemoryLimit` follow moejs: `0` means the engine
+  default or no limit.
+
+## Composable runtimes
+
+A runtime is assembled from `Feature`s:
+
+```go
+type Feature interface {
+	Install(env *Env) (cleanup func() error, err error)
+}
+```
+
+`Env` exposes the runtime, its event loop and the same helpers as `Runtime`.
+A feature can install globals, modules or policies. `Config.FS` and
+`Config.Network` are just features:
+
+```go
+exec, err := canopy.New(canopy.Config{
+	Source: source,
+
+	// node:fs, node:fs/promises and Buffer over one sandbox directory.
+	FS: &canopy.HostFS{
+		Root:  "/srv/workspaces/123",
+		Mount: "/workspace",
+		Write: false,
+		Allow: func(op, path string) error {
+			if op == "write" {
+				return fs.ErrPermission
+			}
+			return nil
+		},
+	},
+
+	// fetch and the Web APIs through one HTTP client.
+	Network: &canopy.HostNetwork{
+		Client: http.DefaultClient,
+		Allow:  canopy.AllowHosts("api.example.com", "*.example.org"),
+	},
+
+	// Anything else.
+	Features: []canopy.Feature{
+		canopy.FeatureFunc(func(env *canopy.Env) (func() error, error) {
+			return nil, env.SetFunc("now", func() int64 { return time.Now().Unix() })
+		}),
+	},
+})
+```
+
+- `NoFS{}` and `NoNetwork{}` install nothing.
+- `&HostNetwork{Client: nil}` installs `fetch`, `URL`, `Response`, Streams,
+  etc. but every fetch rejects: useful for SDKs that reference the globals but
+  must not reach the network.
+- A feature may implement `ResolverProvider` and `ImporterProvider` to serve
+  its own `import` specifiers, which is how `HostFS` provides
+  `node:fs`.
+- Scoping: the first feature that knows a specifier wins.
+
+You can also replace a module with ordinary configuration:
+
+```go
+Config{
+	Modules: map[string]string{
+		"node:fs":   myFSModuleSource,
+		"my:config": `export const region = "eu-west-1";`,
+	},
+	Globals: map[string]any{
+		"__fs": map[string]any{"read": myRead, "write": myWrite},
+	},
+}
+```
+
+## WebAssembly
+
+Canopy can install the browser `WebAssembly` JavaScript API, backed by
+[wazero](https://github.com/tetratelabs/wazero). It is compiled only with the
+`canopy_wasm` build tag:
+
+```sh
+go build -tags canopy_wasm ./...
+go test -tags canopy_wasm ./...
+```
+
+> Why not `-tags wasm`? Go reserves `wasm` for `GOARCH=wasm`. Passing
+> `-tags wasm` while targeting amd64/arm64 makes the standard library select its
+> wasm files and fail to compile, so the feature uses a namespaced tag.
+> `canopy.WebAssemblySupported` reports whether the feature is in the binary.
+
+```go
+exec, err := canopy.New(canopy.Config{
+	Name: "wasm.js",
+	Source: `export async function add(bytes) {
+		const { instance } = await WebAssembly.instantiate(bytes, {});
+		return instance.exports.add(2, 3);
+	}`,
+})
+out, err := exec.Call(ctx, "add", wasmBytes) // []byte becomes an ArrayBuffer
+```
+
+Supported:
+
+- `WebAssembly.Module`, `Instance`, `Memory`, `Global`, `Table`
+- `compile`, `instantiate`, `validate`, `compileStreaming`,
+  `instantiateStreaming`
+- `Module.exports`, `Module.imports`, `Module.customSections`
+- `CompileError`, `LinkError`, `RuntimeError`
+- function, memory and global imports; exported functions, memories and globals
+- i32, i64 (BigInt), f32 and f64 values, and multi-value results
+- live `memory.buffer` views and `memory.grow`
+
+The wazero manager is configured like a browser: Core 2.0 features, a 4 GiB
+memory ceiling, no WASI, no host file system, no environment or stdio, and no
+automatic `_start`. A caller's context still cancels a running wasm function,
+and `Config.WebAssembly.MemoryLimitPages` can lower the 65536-page ceiling.
+`Config.WebAssembly.Disable` leaves the global out even in a tagged build.
+
+Known limits of wazero's public API: `WebAssembly.Table` is present for API
+shape, but `get`/`set`/`grow` throw and imported tables are rejected with a
+`LinkError`. Shared memories, `v128`, and reference-type function signatures are
+not supported. An exported memory with no maximum is capped by wazero at 65536
+pages, so importing it into a module that requires a smaller maximum is a
+`LinkError`, as it is in a browser.
+
+## Modules and imports
+
+Static imports are linked once, when the `Executor` is created. Dynamic
+`import()` and `import.meta` go through a shared `moejs.Importer`.
+
+Resolution order for a specifier:
+
+1. `Config.Modules` exact match (then relative candidates).
+2. `Config.Loader` (`ModuleLoader`).
+3. `Config.ModuleFS` + `Config.ModuleRoot`, an `io/fs` file system (for
+   `embed.FS`, for example).
+4. The host directory of `Config.SourceFile`.
+
+A `SourceSet` is a `ModuleLoader` over a map. `NewFSLoader(fsys, root)` loads
+from any `io/fs`. Host module loading is confined to the entry file's
+directory; the file system a *script* sees is still controlled by `FS`.
+
+## Concurrency and lifetime
+
+`Executor` is safe for concurrent use. Each `Call`, `CallInto` or `Run` leases
+one runtime; `PoolSize` bounds how many run together.
+
+`Runtime` is not safe for concurrent use: moejs requires one goroutine at a
+time. Cancelling the context passed to a call is safe from another goroutine:
+it interrupts the loop and the call returns `*canopy.InterruptedError`.
+
+Runtime state persists between calls that use the same pooled runtime. Set
+`NoReuse` for a fresh runtime per call, or use `NewRuntime` when the program is
+a long-lived state machine. A runtime is discarded after an interrupt,
+timeout, memory-limit hit or internal error, because timers and promises may
+still be pending in it.
+
+## Security
+
+Canopy passes moejs's defenses through `Config`:
+
+- `MemoryLimit` caps retained and allocated bytes; a hit is
+  `canopy.IsMemoryLimit(err)`.
+- `DisableDynamicCode` turns off `eval` and `new Function`;
+  `MaxDynamicSource` caps their source length.
+- `MutableIntrinsics` is off by default, so builtins are frozen.
+- `HostFS` confines every path to `Root` through `os.Root` and is read-only
+  unless `Write` is set; `Allow` sees each access.
+- `HostNetwork` with no `Client` has no network; `Allow`/`AllowHosts` approve
+  each request, redirects included.
+- `NoFS`/`NoNetwork` are the safe defaults.
+- WebAssembly is compiled in only with `-tags canopy_wasm`; it runs in wazero
+  with no WASI, file system or network, and honors
+  `Config.WebAssembly.MemoryLimitPages`.
+
+Do not run untrusted code with `Config.Importer`, `Config.Resolve` or a custom
+module loader that exposes host files or modules you did not intend to expose.
+
+## Errors
+
+Canopy wraps engine errors in `*canopy.Error` (which implements `Unwrap`), so
+`errors.Is` and `errors.As` keep working. Common helpers:
+
+```go
+canopy.IsException(err)    // a JavaScript throw; AsException gets it
+canopy.IsInterrupted(err)  // context cancellation or an explicit interrupt
+canopy.IsTimeout(err)      // context deadline
+canopy.IsCanceled(err)     // context cancellation
+canopy.IsMemoryLimit(err)  // Config.MemoryLimit hit
+canopy.JSStack(err)        // JavaScript stack trace, when there is one
+```
+
+`JSError` is a rejected promise's reason converted to Go. `PanicError` is a Go
+panic inside a host function.
+
+## Examples and tests
+
+Runnable examples live in [`examples/`](examples). The test suite covers
+exposure, access, modules, TypeScript, async/timers, rejection, timeouts,
+memory limits, `HostFS`, `HostNetwork`, pooling and custom features:
+
+```sh
+go test ./...
+go test -race ./...
+```
