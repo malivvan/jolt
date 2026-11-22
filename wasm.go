@@ -15,6 +15,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
 // WebAssemblySupported reports whether this binary was built with the wasm
@@ -36,6 +37,8 @@ type wasmState struct {
 	realm            *engine.Realm
 	count            uint64
 	memoryLimitPages uint32
+	wasi             WebAssemblyWASIOptions
+	wasiEnabled      bool
 
 	moduleClass   *wasmClass
 	instanceClass *wasmClass
@@ -69,8 +72,9 @@ type wasmInstance struct {
 }
 
 // installWebAssembly creates a browser-like wazero runtime and installs the
-// WebAssembly global. The manager has no WASI, no host file system, no
-// environment, no stdio and does not run the conventional "_start" export.
+// WebAssembly global. The WASI host module is loaded unless the caller opts
+// out; it does not run the conventional "_start" export unless the caller asks
+// for it. The environment defaults to empty and sandboxed.
 func installWebAssembly(env *Env, opts WebAssemblyOptions) (func() error, error) {
 	if opts.Disable {
 		return nil, nil
@@ -91,7 +95,18 @@ func installWebAssembly(env *Env, opts WebAssemblyOptions) (func() error, error)
 		WithDebugInfoEnabled(false).
 		WithCustomSections(true)
 	wr := wazero.NewRuntimeWithConfig(ctx, cfg)
-	s := &wasmState{rt: env.Runtime(), env: env, wr: wr, realm: env.Raw().Realm(), memoryLimitPages: pages}
+	s := &wasmState{
+		rt: env.Runtime(), env: env, wr: wr, realm: env.Raw().Realm(),
+		memoryLimitPages: pages,
+		wasi:             opts.WASI,
+		wasiEnabled:      !opts.WASI.Disable,
+	}
+	if s.wasiEnabled {
+		if _, err := wasi_snapshot_preview1.Instantiate(ctx, wr); err != nil {
+			_ = wr.Close(ctx)
+			return nil, err
+		}
+	}
 	if err := s.install(ctx); err != nil {
 		_ = wr.Close(ctx)
 		return nil, err
@@ -244,6 +259,25 @@ func (s *wasmState) accessor(o *engine.Object, name string, get engine.NativeFun
 func (s *wasmState) nextName(kind string) string {
 	s.count++
 	return fmt.Sprintf("canopy:wasm:%s:%d", kind, s.count)
+}
+
+// isHostNamespace reports whether an import module is provided by the wazero
+// host (WASI) rather than by the JavaScript importObject.
+func (s *wasmState) isHostNamespace(module string) bool {
+	return s.wasiEnabled && module == wasi_snapshot_preview1.ModuleName
+}
+
+// usesWASI reports whether the module imports any host-managed namespace.
+func (s *wasmState) usesWASI(m *wasmModule) bool {
+	if !s.wasiEnabled {
+		return false
+	}
+	for _, imp := range m.info.imports {
+		if s.isHostNamespace(imp.module) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *wasmState) newObject(class *wasmClass, newTarget *engine.Object, state any) (*engine.Object, error) {
@@ -472,8 +506,29 @@ func (s *wasmState) instantiate(ctx context.Context, m *wasmModule, importObject
 		})
 	}
 	name := s.nextName("instance")
-	mod, err := s.wr.InstantiateModule(ictx, m.compiled,
-		wazero.NewModuleConfig().WithName(name).WithStartFunctions())
+	mc := wazero.NewModuleConfig().WithName(name).WithStartFunctions()
+	if s.usesWASI(m) {
+		mc = mc.WithArgs(s.wasi.Args...)
+		for _, k := range sortedKeys(s.wasi.Env) {
+			mc = mc.WithEnv(k, s.wasi.Env[k])
+		}
+		if s.wasi.FS != nil {
+			mc = mc.WithFS(s.wasi.FS)
+		}
+		if s.wasi.Stdin != nil {
+			mc = mc.WithStdin(s.wasi.Stdin)
+		}
+		if s.wasi.Stdout != nil {
+			mc = mc.WithStdout(s.wasi.Stdout)
+		}
+		if s.wasi.Stderr != nil {
+			mc = mc.WithStderr(s.wasi.Stderr)
+		}
+		if s.wasi.Rand != nil {
+			mc = mc.WithRandSource(s.wasi.Rand)
+		}
+	}
+	mod, err := s.wr.InstantiateModule(ictx, m.compiled, mc)
 	if err != nil {
 		class := s.linkErrClass
 		if m.info.hasStart {
@@ -587,6 +642,15 @@ func (s *wasmState) prepareImports(ctx context.Context, m *wasmModule, importObj
 	fds := m.compiled.ImportedFunctions()
 	fi := 0
 	for i, imp := range m.info.imports {
+		if s.isHostNamespace(imp.module) {
+			// Host-managed imports resolve through wazero's store. Keep the
+			// function index aligned with ImportedFunctions(), which follows
+			// the same binary import order.
+			if imp.kind == wasmKindFunc {
+				fi++
+			}
+			continue
+		}
 		if importObject.IsUndefined() || importObject.IsNull() {
 			return nil, s.throwError(s.linkErrClass, fmt.Sprintf(
 				"WebAssembly.instantiate(): import %d (module=%q name=%q) is missing", i, imp.module, imp.name))
