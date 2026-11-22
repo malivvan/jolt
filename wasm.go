@@ -6,6 +6,7 @@ package js
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"github.com/tetratelabs/wazero/sys"
 )
 
 // WebAssemblySupported reports whether this binary was built with the wasm
@@ -535,6 +537,17 @@ func (s *wasmState) instantiate(ctx context.Context, m *wasmModule, importObject
 			class = s.runtimeErrClass
 		}
 		return nil, s.throwError(class, err.Error())
+	}
+	if s.wasiEnabled && s.wasi.RunStart {
+		if start := mod.ExportedFunction("_start"); start != nil {
+			if _, err := start.Call(ctx); err != nil {
+				var exitErr *sys.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 0 {
+					return nil, s.throwError(s.runtimeErrClass, err.Error())
+				}
+				// proc_exit(0) is success; the module is now closed.
+			}
+		}
 	}
 	inst := &wasmInstance{state: s, module: m, api: mod, name: name}
 	inst.exports = s.buildExports(inst)
