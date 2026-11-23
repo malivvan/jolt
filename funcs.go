@@ -177,6 +177,16 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 		return reflect.ValueOf(r.currentContext()), nil
 	}
 
+	// A JavaScript function becomes a Go func the host can call back, so a
+	// host function can take a callback. The engine's decoder does not do
+	// this, and a JSON round trip would lose the function entirely.
+	if t.Kind() == reflect.Func {
+		if !engine.IsCallable(arg) {
+			return reflect.Zero(t), fmt.Errorf("js: argument %d is not a function", index+1)
+		}
+		return r.funcValue(arg, t, index)
+	}
+
 	// The engine's decoder understands JS values, JSON-shaped Go types and
 	// structs. It is also the fastest path for the common cases.
 	p := reflect.New(t)
@@ -239,6 +249,70 @@ func isNumericKind(k reflect.Kind) bool {
 		return true
 	}
 	return false
+}
+
+// funcValue wraps the JavaScript function arg as a Go func of type t, so a
+// host function can call a callback JavaScript passed it. The returned func
+// calls arg with this = undefined and converts the result back to t's result
+// type. It must be called on the runtime's goroutine, like any other call.
+func (r *Runtime) funcValue(arg moejs.Value, t reflect.Type, index int) (reflect.Value, error) {
+	if t.IsVariadic() {
+		return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert a JavaScript function to variadic %s", index+1, t)
+	}
+	nout := t.NumOut()
+	switch {
+	case nout == 0:
+	case nout == 1 && t.Out(0).Implements(errorType):
+	case nout == 1:
+	case nout == 2 && t.Out(1).Implements(errorType):
+	default:
+		return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert a JavaScript function to %s; want (T), (T, error) or error results", index+1, t)
+	}
+	fn := reflect.MakeFunc(t, func(args []reflect.Value) []reflect.Value {
+		vals := make([]moejs.Value, len(args))
+		for i, a := range args {
+			v, err := r.fromGo(a.Interface())
+			if err != nil {
+				return funcResults(t, nout, reflect.Zero(t.Out(0)), err)
+			}
+			vals[i] = v
+		}
+		res, err := r.raw.CallFunction(arg, moejs.Undefined(), vals...)
+		if err != nil {
+			return funcResults(t, nout, reflect.Zero(t.Out(0)), r.enrich(err))
+		}
+		if nout == 0 || (nout == 1 && t.Out(0).Implements(errorType)) {
+			return funcResults(t, nout, reflect.Value{}, nil)
+		}
+		out, cerr := r.paramValue(res, t.Out(0), 0)
+		if cerr != nil {
+			return funcResults(t, nout, reflect.Zero(t.Out(0)), cerr)
+		}
+		return funcResults(t, nout, out, nil)
+	})
+	return fn, nil
+}
+
+// funcResults builds the result slice a reflected func returns, placing err in
+// the trailing error result when the signature has one.
+func funcResults(t reflect.Type, nout int, v reflect.Value, err error) []reflect.Value {
+	switch {
+	case nout == 0:
+		return nil
+	case nout == 1 && t.Out(0).Implements(errorType):
+		return []reflect.Value{errorReflect(err)}
+	case nout == 1:
+		return []reflect.Value{v}
+	default:
+		return []reflect.Value{v, errorReflect(err)}
+	}
+}
+
+func errorReflect(err error) reflect.Value {
+	if err == nil {
+		return reflect.Zero(errorType)
+	}
+	return reflect.ValueOf(&err).Elem()
 }
 
 // returnValue converts a Go result to a JavaScript value.

@@ -10,8 +10,7 @@ API backed by wazero.
 - Entry points: `js.New(Config)` returns an `*Executor` (compiled once,
   pooled runtimes); `js.NewRuntime(Config)` returns one owned `*Runtime`.
 - Manifest: `go.mod` (Go 1.25). README is the user-facing guide; `doc.go`
-  holds the package docs; `WAZERO.md` records the WebAssembly backend
-  research.
+  holds the package docs.
 - WebAssembly is part of the default build. `-tags nowasm` removes it.
 
 ## Commands

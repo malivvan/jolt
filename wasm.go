@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"sync"
 
 	"github.com/MoeForge/moejs"
 	"github.com/MoeForge/moejs/engine"
@@ -801,22 +800,18 @@ func (s *wasmState) buildNamespace(ctx context.Context, p *namespacePlan) (api.M
 
 // installStreaming adds compileStreaming and instantiateStreaming in
 // JavaScript. They accept a Response or a promise of one.
+//
+// The script is compiled per installation rather than cached in package
+// state: RunScript evaluates it in this runtime's global object, and a
+// cached compile error would otherwise leak into every later runtime.
 func (s *wasmState) installStreaming(context.Context) error {
-	wasmStreamingOnce.Do(func() {
-		wasmStreamingScript, wasmStreamingErr = moejs.CompileScript("js:webassembly-streaming", wasmStreamingSource)
-	})
-	if wasmStreamingErr != nil {
-		return wasmStreamingErr
+	script, err := moejs.CompileScript("js:webassembly-streaming", wasmStreamingSource)
+	if err != nil {
+		return err
 	}
-	_, err := s.rt.raw.RunScript(wasmStreamingScript)
+	_, err = s.rt.raw.RunScript(script)
 	return err
 }
-
-var (
-	wasmStreamingOnce   sync.Once
-	wasmStreamingScript *moejs.Script
-	wasmStreamingErr    error
-)
 
 const wasmStreamingSource = `
 (function () {

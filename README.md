@@ -94,7 +94,20 @@ A parameter may be:
 | `moejs.Value` | the raw JavaScript value |
 | `*js.Value` | a js value handle |
 | `*moejs.Object` | the raw object value |
+| a Go `func` type | the JavaScript function, callable from Go |
 | any other Go type | decoded from the JavaScript value, with structs and maps using their `json` tags |
+
+A `func` parameter receives the JavaScript function as a callable Go value, so
+a host function can take a callback:
+
+```go
+rt.SetFunc("apply", func(fn func(int) int, n int) int { return fn(n) })
+// apply(x => x + 1, 41) === 42
+```
+
+The callback's result type follows the same `(T)`, `(T, error)` and `error`
+shapes as a host function; a throw inside the callback comes back as a Go
+error. A variadic `func` parameter type is rejected.
 
 Variadic parameters work. A Go panic is recovered and thrown as a JavaScript
 `Error` (and exposed to Go as `*js.PanicError`). Named functions from

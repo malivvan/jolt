@@ -116,6 +116,11 @@ func (r *Runtime) SetPath(path string, value any) error {
 		return wrap("set", path, err)
 	}
 	parts := strings.Split(path, ".")
+	for i, part := range parts {
+		if part == "" {
+			return wrap("set", path, fmt.Errorf("empty path element at %d", i+1))
+		}
+	}
 	if len(parts) == 1 {
 		if err := r.raw.SetGlobal(path, raw); err != nil {
 			return wrap("set", path, err)
@@ -126,9 +131,6 @@ func (r *Runtime) SetPath(path string, value any) error {
 	realm := r.raw.Realm()
 	cur := realm.Global
 	for i, part := range parts {
-		if part == "" {
-			return wrap("set", path, fmt.Errorf("empty path element at %d", i+1))
-		}
 		key := realm.KeyFromGoString(part)
 		if i == len(parts)-1 {
 			if err := realm.SetV(engine.ObjectValue(cur), key, raw); err != nil {

@@ -423,6 +423,12 @@ export function later() { return Promise.resolve(5); }`,
 			t.Fatalf("SetPath(%q) accepted", path)
 		}
 	}
+	// A rejected path must not leave a partially created object behind.
+	if v, err := rt.Eval(ctx, "typeof globalThis.a"); err != nil {
+		t.Fatalf("Eval: %v", err)
+	} else if s, _ := v.Text(); s != "undefined" {
+		t.Fatalf("SetPath(a..b) created global a: %q", s)
+	}
 	if err := rt.Set("num", 1); err != nil {
 		t.Fatalf("Set num: %v", err)
 	}
@@ -734,6 +740,26 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetFunc obj: %v", err)
 	}
+	// A JavaScript function passed to a Go func parameter is callable back.
+	if err := rt.SetFunc("apply", func(fn func(int) int, n int) int { return fn(n) }); err != nil {
+		t.Fatalf("SetFunc apply: %v", err)
+	}
+	if v, err := rt.Eval(context.Background(), "apply(x => x + 1, 41)"); err != nil {
+		t.Fatalf("apply: %v", err)
+	} else if n, _ := v.Int(); n != 42 {
+		t.Fatalf("apply(x=>x+1, 41) = %v", v)
+	}
+	if _, err := rt.Eval(context.Background(), "apply(5, 1)"); err == nil {
+		t.Fatalf("apply(5, 1) accepted a non-function")
+	}
+	// A callback that throws surfaces as a Go error from the callback call.
+	if err := rt.SetFunc("check", func(fn func() error) error { return fn() }); err != nil {
+		t.Fatalf("SetFunc check: %v", err)
+	}
+	if _, err := rt.Eval(context.Background(), "check(() => { throw new Error('nope') })"); err == nil {
+		t.Fatalf("check accepted a throwing callback")
+	}
+
 	val := moejs.Number(5)
 	if err := rt.SetFunc("retValue", func() moejs.Value { return val }); err != nil {
 		t.Fatalf("SetFunc retValue: %v", err)
@@ -871,6 +897,85 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}
 	if v, err := r.returnValue("x", reflect.Value{}, reflect.TypeOf(0)); err != nil || !v.IsUndefined() {
 		t.Fatalf("returnValue(invalid) = %v, %v", v, err)
+	}
+
+	// funcValue: every result shape, plus its rejection paths.
+	cbRT := covRuntime(t, Config{Source: `export const five = () => 5;
+export const obj = () => ({});
+export const boom = () => { throw new Error('cb'); };`})
+	jsFn := mustJSFunc(t, cbRT, "five").Raw()
+
+	// (T) result.
+	ft := reflect.TypeOf(func() int { return 0 })
+	if fv, err := cbRT.funcValue(jsFn, ft, 0); err != nil {
+		t.Fatalf("funcValue(int): %v", err)
+	} else if out := fv.Interface().(func() int)(); out != 5 {
+		t.Fatalf("funcValue(int)() = %d", out)
+	}
+	// error result.
+	ftErr := reflect.TypeOf(func() error { return nil })
+	if fv, err := cbRT.funcValue(jsFn, ftErr, 0); err != nil {
+		t.Fatalf("funcValue(error): %v", err)
+	} else if out := fv.Interface().(func() error)(); out != nil {
+		t.Fatalf("funcValue(error)() = %v", out)
+	}
+	// (T, error) result.
+	ft2 := reflect.TypeOf(func() (int, error) { return 0, nil })
+	if fv, err := cbRT.funcValue(jsFn, ft2, 0); err != nil {
+		t.Fatalf("funcValue(int, error): %v", err)
+	} else if n, e := fv.Interface().(func() (int, error))(); e != nil || n != 5 {
+		t.Fatalf("funcValue(int, error)() = %d, %v", n, e)
+	}
+	// No result.
+	ftVoid := reflect.TypeOf(func() {})
+	if fv, err := cbRT.funcValue(jsFn, ftVoid, 0); err != nil {
+		t.Fatalf("funcValue(void): %v", err)
+	} else {
+		fv.Interface().(func())()
+	}
+	// A bad result shape is rejected.
+	ftBad := reflect.TypeOf(func() (int, int, int) { return 0, 0, 0 })
+	if _, err := cbRT.funcValue(jsFn, ftBad, 0); err == nil {
+		t.Fatalf("funcValue(bad shape) accepted")
+	}
+	// A variadic func type is rejected.
+	ftVar := reflect.TypeOf(func(...int) int { return 0 })
+	if _, err := cbRT.funcValue(jsFn, ftVar, 0); err == nil {
+		t.Fatalf("funcValue(variadic) accepted")
+	}
+	// A callback whose result cannot convert to the Go result type errors.
+	badFn := mustJSFunc(t, cbRT, "obj").Raw()
+	if fv, err := cbRT.funcValue(badFn, ft, 0); err != nil {
+		t.Fatalf("funcValue(int) wrap: %v", err)
+	} else if out := fv.Interface().(func() int)(); out != 0 {
+		t.Fatalf("funcValue(int)() with object result = %d", out)
+	}
+	// A callback that throws surfaces the error through the (T, error) shape.
+	throwFn := mustJSFunc(t, cbRT, "boom").Raw()
+	if fv, err := cbRT.funcValue(throwFn, ft2, 0); err != nil {
+		t.Fatalf("funcValue(int, error) wrap: %v", err)
+	} else if _, e := fv.Interface().(func() (int, error))(); e == nil {
+		t.Fatalf("funcValue(int, error)() with throwing callback returned no error")
+	}
+	// funcResults and errorReflect directly, for the branches a call cannot
+	// reach.
+	if got := funcResults(ft, 1, reflect.ValueOf(7), nil); len(got) != 1 || got[0].Int() != 7 {
+		t.Fatalf("funcResults(T) = %v", got)
+	}
+	if got := funcResults(ftVoid, 0, reflect.Value{}, nil); got != nil {
+		t.Fatalf("funcResults(void) = %v", got)
+	}
+	if got := funcResults(ftErr, 1, reflect.Value{}, errors.New("boom")); len(got) != 1 || got[0].Interface() == nil {
+		t.Fatalf("funcResults(error) = %v", got)
+	}
+	if got := funcResults(ft2, 2, reflect.ValueOf(1), nil); len(got) != 2 || got[1].Interface() != nil {
+		t.Fatalf("funcResults(T, error) = %v", got)
+	}
+	if v := errorReflect(nil); v.Interface() != nil {
+		t.Fatalf("errorReflect(nil) = %v", v)
+	}
+	if v := errorReflect(errors.New("x")); v.Interface() == nil {
+		t.Fatalf("errorReflect(err) = nil")
 	}
 	if v, err := r.returnValue("x", reflect.ValueOf(3), reflect.TypeOf(0)); err != nil {
 		t.Fatalf("returnValue(int) = %v", err)
@@ -1016,6 +1121,14 @@ func TestCoverageModuleLoaders(t *testing.T) {
 	l2 := NewFSLoader(fsys, "sub")
 	if src, err := l2.Load("main.js", "b"); err != nil || src.Source != "B" {
 		t.Fatalf("FSLoader(root) = %+v, %v", src, err)
+	}
+	// A referrer that already carries the root must not have it applied
+	// twice: Config.Name is passed as the entry referrer.
+	if src, err := l2.Load("sub/b.js", "b"); err != nil || src.Source != "B" {
+		t.Fatalf("FSLoader(rooted referrer) = %+v, %v", src, err)
+	}
+	if src, err := l2.Load("sub", "b"); err != nil || src.Source != "B" {
+		t.Fatalf("FSLoader(referrer == root) = %+v, %v", src, err)
 	}
 	if _, err := (&FSLoader{}).Load("main.js", "a"); !errors.Is(err, ErrModuleNotFound) {
 		t.Fatalf("FSLoader(nil) = %v", err)

@@ -81,7 +81,19 @@ func (l *FSLoader) Load(referrer, specifier string) (ModuleSource, error) {
 		return ModuleSource{}, fmt.Errorf("%w: no io/fs file system", ErrModuleNotFound)
 	}
 	root := strings.Trim(path.Clean(strings.ReplaceAll(l.Root, "\\", "/")), "/")
-	for _, name := range importCandidates(referrer, specifier) {
+	// The referrer may already carry the root: Config.Name is passed as the
+	// referrer for the entry module, and a caller may name a module by its
+	// full path. Candidates are root-relative, so strip the prefix first;
+	// otherwise the root would be applied twice.
+	ref := strings.ReplaceAll(referrer, "\\", "/")
+	if root != "" && root != "." {
+		if ref == root {
+			ref = ""
+		} else if strings.HasPrefix(ref, root+"/") {
+			ref = strings.TrimPrefix(ref, root+"/")
+		}
+	}
+	for _, name := range importCandidates(ref, specifier) {
 		if !validModuleName(name) {
 			continue
 		}

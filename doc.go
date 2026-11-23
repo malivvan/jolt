@@ -53,9 +53,11 @@
 // A parameter of type context.Context receives the context of the running
 // call, so a JavaScript invocation is cancelled when the Go caller's context
 // ends. A parameter of type moejs.Value receives the raw engine value, and
-// *Value receives a js handle. A function may be variadic and may return
-// (T), (T, error) or error. A Go panic inside a registered function becomes a
-// *PanicError thrown back to JavaScript; JavaScript may catch it as an Error.
+// *Value receives a js handle. A parameter of a Go func type receives the
+// JavaScript function as a callable Go value, so a host function can take a
+// callback. A function may be variadic and may return (T), (T, error) or
+// error. A Go panic inside a registered function becomes a *PanicError thrown
+// back to JavaScript; JavaScript may catch it as an Error.
 //
 // SetNamespace exposes a map as one global object, converting nested maps,
 // slices, funcs and *Value handles, and Set exposes a single value. Structs,
