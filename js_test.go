@@ -16,7 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	js "github.com/malivvan/js"
+	"github.com/malivvan/js"
 )
 
 func newExec(t *testing.T, cfg js.Config) *js.Executor {
@@ -122,7 +122,7 @@ func TestGoFunctionSignatures(t *testing.T) {
 			return "ctx:" + v
 		},
 		"echo": func(task task) built {
-			return built{Prompt: task.Prompt, N: task.N}
+			return built(task)
 		},
 	}
 
@@ -670,7 +670,7 @@ func TestWebAssemblyBuildGating(t *testing.T) {
 			Source:      "1",
 			WebAssembly: js.WebAssemblyOptions{MemoryLimitPages: 1},
 		}); err == nil {
-			t.Fatalf("memory options without the canopy_wasm tag were accepted")
+			t.Fatalf("memory options in a nowasm build were accepted")
 		}
 	}
 }

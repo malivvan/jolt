@@ -1,9 +1,9 @@
-# canopy
+# js
 
 A developer-focused JavaScript executor for Go, built on
 [moejs](https://github.com/MoeForge/moejs).
 
-Canopy turns moejs's low-level engine API into a small, ergonomic library:
+js turns moejs's low-level engine API into a small, ergonomic library:
 
 - **One `Config` for everything** — source, engine limits, event loop, sandbox,
   imports, pool size and hooks.
@@ -25,11 +25,11 @@ import (
 	"context"
 	"fmt"
 
-	"canopy"
+	"github.com/malivvan/js"
 )
 
 func main() {
-	exec, err := canopy.New(canopy.Config{
+	exec, err := js.New(js.Config{
 		Name: "greet.js",
 		Source: `
 export function greet(name) {
@@ -52,8 +52,8 @@ export function greet(name) {
 }
 ```
 
-> The module is named `canopy` in this workspace. Change the `module` line in
-> `go.mod` (and the import paths) to your repository before publishing.
+> The module path is `github.com/malivvan/js` and the package name is `js`.
+> Adjust the module line in `go.mod` and the import paths if you fork it.
 
 ## Exposing Go to JavaScript
 
@@ -89,15 +89,15 @@ A parameter may be:
 | Go type | Receives |
 | --- | --- |
 | `context.Context` | the context of the running call (first parameter or any position) |
-| `*canopy.Runtime` | the runtime, for callbacks during the call |
+| `*js.Runtime` | the runtime, for callbacks during the call |
 | `*moejs.Realm` | the engine realm |
 | `moejs.Value` | the raw JavaScript value |
-| `*canopy.Value` | a canopy value handle |
+| `*js.Value` | a js value handle |
 | `*moejs.Object` | the raw object value |
 | any other Go type | decoded from the JavaScript value, with structs and maps using their `json` tags |
 
 Variadic parameters work. A Go panic is recovered and thrown as a JavaScript
-`Error` (and exposed to Go as `*canopy.PanicError`). Named functions from
+`Error` (and exposed to Go as `*js.PanicError`). Named functions from
 different runtimes are rejected, as moejs requires.
 
 ### Values and namespaces
@@ -137,8 +137,8 @@ err = exec.CallInto(ctx, "buildRequest", &req, task)
 ```
 
 Unless `Config.DisableAwaitPromises` is set, a returned promise is awaited on
-the runtime's event loop. A rejection becomes a `*canopy.JSError`; a
-synchronous `throw` remains a `*canopy.Exception` (an alias for
+the runtime's event loop. A rejection becomes a `*js.JSError`; a
+synchronous `throw` remains a `*js.Exception` (an alias for
 `moejs.Exception`).
 
 A call runs the event loop until no referenced timer, immediate, task or held
@@ -150,7 +150,7 @@ program that never goes idle.
 For several calls against one JavaScript state, lease a runtime:
 
 ```go
-err := exec.Run(ctx, func(rt *canopy.Runtime) error {
+err := exec.Run(ctx, func(rt *js.Runtime) error {
 	// Module export or global.
 	config, err := rt.Get("config")
 	if err != nil {
@@ -194,7 +194,7 @@ or `SourceFile` is set.
 | Features | `FS`, `Network`, `Features` |
 | Modules | `Modules`, `Loader`, `ModuleFS`, `ModuleRoot`, `Resolve`, `Importer` |
 | Exposure | `Globals`, `Functions`, `Console`, `DisableConsole` |
-| WebAssembly | `WebAssembly` (`Disable`, `MemoryLimitPages`, `WASI`: `Disable`, `Args`, `Env`, `FS`, `Stdin`, `Stdout`, `Stderr`, `Rand`, `RunStart`); requires the `canopy_wasm` build tag |
+| WebAssembly | `WebAssembly` (`Disable`, `MemoryLimitPages`, `WASI`: `Disable`, `Args`, `Env`, `FS`, `Stdin`, `Stdout`, `Stderr`, `Rand`, `RunStart`); on by default, opt out with `-tags nowasm` |
 | Pool | `PoolSize`, `MaxIdle`, `NoReuse` |
 | Hooks | `OnRuntimeReady`, `OnRuntimeClose` |
 
@@ -226,11 +226,11 @@ A feature can install globals, modules or policies. `Config.FS` and
 `Config.Network` are just features:
 
 ```go
-exec, err := canopy.New(canopy.Config{
+exec, err := js.New(js.Config{
 	Source: source,
 
 	// node:fs, node:fs/promises and Buffer over one sandbox directory.
-	FS: &canopy.HostFS{
+	FS: &js.HostFS{
 		Root:  "/srv/workspaces/123",
 		Mount: "/workspace",
 		Write: false,
@@ -243,14 +243,14 @@ exec, err := canopy.New(canopy.Config{
 	},
 
 	// fetch and the Web APIs through one HTTP client.
-	Network: &canopy.HostNetwork{
+	Network: &js.HostNetwork{
 		Client: http.DefaultClient,
-		Allow:  canopy.AllowHosts("api.example.com", "*.example.org"),
+		Allow:  js.AllowHosts("api.example.com", "*.example.org"),
 	},
 
 	// Anything else.
-	Features: []canopy.Feature{
-		canopy.FeatureFunc(func(env *canopy.Env) (func() error, error) {
+	Features: []js.Feature{
+		js.FeatureFunc(func(env *js.Env) (func() error, error) {
 			return nil, env.SetFunc("now", func() int64 { return time.Now().Unix() })
 		}),
 	},
@@ -282,22 +282,23 @@ Config{
 
 ## WebAssembly
 
-Canopy can install the browser `WebAssembly` JavaScript API, backed by
-[wazero](https://github.com/tetratelabs/wazero). It is compiled only with the
-`canopy_wasm` build tag:
+js installs the browser `WebAssembly` JavaScript API, backed by
+[wazero](https://github.com/tetratelabs/wazero), by default. Build with the
+`nowasm` tag to leave it out:
 
 ```sh
-go build -tags canopy_wasm ./...
-go test -tags canopy_wasm ./...
+go build -tags nowasm ./...
+go test -tags nowasm ./...
 ```
 
-> Why not `-tags wasm`? Go reserves `wasm` for `GOARCH=wasm`. Passing
+> Why not tag it `wasm`? Go reserves `wasm` for `GOARCH=wasm`. Passing
 > `-tags wasm` while targeting amd64/arm64 makes the standard library select its
-> wasm files and fail to compile, so the feature uses a namespaced tag.
-> `canopy.WebAssemblySupported` reports whether the feature is in the binary.
+> wasm files and fail to compile. The API is also automatically absent when
+> cross-compiling for `GOARCH=wasm`.
+> `js.WebAssemblySupported` reports whether the feature is in the binary.
 
 ```go
-exec, err := canopy.New(canopy.Config{
+exec, err := js.New(js.Config{
 	Name: "wasm.js",
 	Source: `export async function add(bytes) {
 		const { instance } = await WebAssembly.instantiate(bytes, {});
@@ -334,9 +335,9 @@ ignored; the host-managed namespace always wins.
 Each guest that imports WASI gets its environment from the Go config:
 
 ```go
-exec, err := canopy.New(canopy.Config{
-	WebAssembly: canopy.WebAssemblyOptions{
-		WASI: canopy.WebAssemblyWASIOptions{
+exec, err := js.New(js.Config{
+	WebAssembly: js.WebAssemblyOptions{
+		WASI: js.WebAssemblyWASIOptions{
 			Args:   []string{"app", "--flag"},
 			Env:    map[string]string{"MODE": "prod"},
 			FS:     os.DirFS("/srv/app"),
@@ -391,7 +392,7 @@ one runtime; `PoolSize` bounds how many run together.
 
 `Runtime` is not safe for concurrent use: moejs requires one goroutine at a
 time. Cancelling the context passed to a call is safe from another goroutine:
-it interrupts the loop and the call returns `*canopy.InterruptedError`.
+it interrupts the loop and the call returns `*js.InterruptedError`.
 
 Runtime state persists between calls that use the same pooled runtime. Set
 `NoReuse` for a fresh runtime per call, or use `NewRuntime` when the program is
@@ -401,10 +402,10 @@ still be pending in it.
 
 ## Security
 
-Canopy passes moejs's defenses through `Config`:
+js passes moejs's defenses through `Config`:
 
 - `MemoryLimit` caps retained and allocated bytes; a hit is
-  `canopy.IsMemoryLimit(err)`.
+  `js.IsMemoryLimit(err)`.
 - `DisableDynamicCode` turns off `eval` and `new Function`;
   `MaxDynamicSource` caps their source length.
 - `MutableIntrinsics` is off by default, so builtins are frozen.
@@ -413,7 +414,7 @@ Canopy passes moejs's defenses through `Config`:
 - `HostNetwork` with no `Client` has no network; `Allow`/`AllowHosts` approve
   each request, redirects included.
 - `NoFS`/`NoNetwork` are the safe defaults.
-- WebAssembly is compiled in only with `-tags canopy_wasm`; it runs in wazero
+- WebAssembly is on by default (`-tags nowasm` removes it); it runs in wazero
   with WASI loaded but sandboxed by default (no args, environment, file system,
   stdio or clocks, and deterministic randomness) and honors
   `Config.WebAssembly.MemoryLimitPages`. `Config.WebAssembly.WASI` exposes host
@@ -424,16 +425,16 @@ module loader that exposes host files or modules you did not intend to expose.
 
 ## Errors
 
-Canopy wraps engine errors in `*canopy.Error` (which implements `Unwrap`), so
+js wraps engine errors in `*js.Error` (which implements `Unwrap`), so
 `errors.Is` and `errors.As` keep working. Common helpers:
 
 ```go
-canopy.IsException(err)    // a JavaScript throw; AsException gets it
-canopy.IsInterrupted(err)  // context cancellation or an explicit interrupt
-canopy.IsTimeout(err)      // context deadline
-canopy.IsCanceled(err)     // context cancellation
-canopy.IsMemoryLimit(err)  // Config.MemoryLimit hit
-canopy.JSStack(err)        // JavaScript stack trace, when there is one
+js.IsException(err)    // a JavaScript throw; AsException gets it
+js.IsInterrupted(err)  // context cancellation or an explicit interrupt
+js.IsTimeout(err)      // context deadline
+js.IsCanceled(err)     // context cancellation
+js.IsMemoryLimit(err)  // Config.MemoryLimit hit
+js.JSStack(err)        // JavaScript stack trace, when there is one
 ```
 
 `JSError` is a rejected promise's reason converted to Go. `PanicError` is a Go

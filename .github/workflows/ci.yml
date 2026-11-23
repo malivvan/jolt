@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -mod=mod
+
+jobs:
+  test:
+    name: Build and test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            tags: ""
+          - name: nowasm
+            tags: nowasm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        if: matrix.tags == ''
+        run: test -z "$(gofmt -l .)"
+
+      - name: Build
+        run: go build -tags "${{ matrix.tags }}" ./...
+
+      - name: Vet
+        run: go vet -tags "${{ matrix.tags }}" ./...
+
+      - name: Test
+        run: go test -count=1 -tags "${{ matrix.tags }}" ./...
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test with -race (default)
+        run: go test -race -count=1 ./...
+
+      - name: Test with -race (nowasm)
+        run: go test -race -count=1 -tags nowasm ./...
+
+  coverage:
+    name: Coverage gate (>= 90%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Measure coverage
+        run: go test -count=1 -coverprofile=coverage.out .
+
+      - name: Enforce threshold
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')
+          echo "total coverage: ${total}%"
+          awk -v total="$total" 'BEGIN { if (total + 0 < 90) { exit 1 } }'
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+
+  examples:
+    name: Examples smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run examples
+        run: |
+          test "$(go run ./examples/greet)" = "hello world!"
+          test "$(go run ./examples/sandbox)" = "42"
+          out=$(go run ./examples/webassembly)
+          echo "$out"
+          echo "$out" | grep -qx "hello from wasm"
+          echo "$out" | grep -qx "ok"
+
+  staticcheck:
+    name: Staticcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: dominikh/staticcheck-action@v1
+        with:
+          version: "2026.2.2"
+          install-go: false

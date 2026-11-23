@@ -16,7 +16,7 @@ import (
 // Runtime owns one moejs runtime, its event loop and its installed features.
 //
 // A Runtime is not safe for concurrent use: moejs requires one goroutine at a
-// time, and so does canopy. Executor provides concurrency by keeping a pool of
+// time, and so does js. Executor provides concurrency by keeping a pool of
 // runtimes. Context cancellation is safe: it interrupts the call from another
 // goroutine.
 type Runtime struct {
@@ -72,7 +72,7 @@ func (r *Runtime) Close() error {
 		return nil
 	}
 	if r.running.Load() {
-		return fmt.Errorf("canopy: Close called while the runtime is running")
+		return fmt.Errorf("js: Close called while the runtime is running")
 	}
 	if !r.closing.CompareAndSwap(false, true) {
 		return nil
@@ -382,6 +382,11 @@ func (r *Runtime) lookup(path string) (moejs.Value, error) {
 		return moejs.Undefined(), errors.New("empty path")
 	}
 	parts := strings.Split(path, ".")
+	for i, part := range parts {
+		if part == "" {
+			return moejs.Undefined(), fmt.Errorf("empty path element at %d", i+1)
+		}
+	}
 	var cur moejs.Value
 	if v, ok := r.raw.Export(parts[0]); ok {
 		cur = v
@@ -524,6 +529,11 @@ func (r *Runtime) onLoop(ctx context.Context, op string, fn func(context.Context
 		if p := recover(); p != nil {
 			r.ctx = nil
 			r.running.Store(false)
+			if !stop() {
+				<-interrupted
+			}
+			r.raw.ClearInterrupt()
+			r.raw.ReleaseCallData()
 			r.broken.Store(true)
 			panic(p)
 		}

@@ -38,7 +38,7 @@ func (v *Value) Runtime() *Runtime {
 
 func (v *Value) check() error {
 	if v == nil || v.rt == nil {
-		return fmt.Errorf("canopy: nil Value")
+		return fmt.Errorf("js: nil Value")
 	}
 	if v.rt.closed.Load() {
 		return ErrClosed
@@ -68,7 +68,7 @@ func (v *Value) Into(target any) error {
 		return err
 	}
 	if target == nil {
-		return fmt.Errorf("canopy: decode into nil target")
+		return fmt.Errorf("js: decode into nil target")
 	}
 	return wrap("decode", "", v.rt.raw.UnmarshalWith(v.v, target, v.rt.cfg.Decode))
 }
@@ -114,23 +114,16 @@ func (v *Value) Int() (int64, error) {
 	switch n := g.(type) {
 	case int64:
 		return n, nil
-	case int:
-		return int64(n), nil
-	case int32:
-		return int64(n), nil
-	case uint64:
-		if n > math.MaxInt64 {
-			return 0, fmt.Errorf("canopy: %d overflows int64", n)
-		}
-		return int64(n), nil
 	case float64:
+		// float64(math.MaxInt64) rounds up to 2^63, which is already out of
+		// range, so compare with >= rather than >.
 		if math.IsNaN(n) || math.IsInf(n, 0) || n != math.Trunc(n) ||
-			n < math.MinInt64 || n > math.MaxInt64 {
-			return 0, fmt.Errorf("canopy: %v is not an integral int64", n)
+			n < math.MinInt64 || n >= math.MaxInt64 {
+			return 0, fmt.Errorf("js: %v is not an integral int64", n)
 		}
 		return int64(n), nil
 	default:
-		return 0, fmt.Errorf("canopy: %s is not a number", typeName(v.v.Type()))
+		return 0, fmt.Errorf("js: %s is not a number", typeName(v.v.Type()))
 	}
 }
 
@@ -145,14 +138,8 @@ func (v *Value) Float() (float64, error) {
 		return n, nil
 	case int64:
 		return float64(n), nil
-	case int:
-		return float64(n), nil
-	case int32:
-		return float64(n), nil
-	case uint64:
-		return float64(n), nil
 	default:
-		return 0, fmt.Errorf("canopy: %s is not a number", typeName(v.v.Type()))
+		return 0, fmt.Errorf("js: %s is not a number", typeName(v.v.Type()))
 	}
 }
 

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	canopy "github.com/malivvan/js"
+	"github.com/malivvan/js"
 )
 
 func ExampleNew() {
-	exec, err := canopy.New(canopy.Config{
+	exec, err := js.New(js.Config{
 		Name: "greet.js",
 		Source: `
 export function greet(name) {
@@ -34,13 +34,13 @@ export function greet(name) {
 }
 
 func ExampleFeatureFunc() {
-	feature := canopy.FeatureFunc(func(env *canopy.Env) (func() error, error) {
+	feature := js.FeatureFunc(func(env *js.Env) (func() error, error) {
 		return nil, env.SetFunc("featureValue", func() string { return "from a feature" })
 	})
-	exec, err := canopy.New(canopy.Config{
+	exec, err := js.New(js.Config{
 		Name:     "feature.js",
 		Source:   `export function value() { return featureValue(); }`,
-		Features: []canopy.Feature{feature},
+		Features: []js.Feature{feature},
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -63,7 +63,7 @@ type exampleTask struct {
 }
 
 func ExampleExecutor_CallInto() {
-	exec, err := canopy.New(canopy.Config{
+	exec, err := js.New(js.Config{
 		Name: "build.js",
 		Source: `
 export function build(task) {

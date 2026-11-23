@@ -23,7 +23,6 @@ var (
 	runtimePtrType = reflect.TypeOf((*Runtime)(nil))
 	objectPtrType  = reflect.TypeOf((*moejs.Object)(nil))
 	byteSliceType  = reflect.TypeOf([]byte(nil))
-	valueSliceType = reflect.TypeOf([]moejs.Value(nil))
 )
 
 // adaptFunc turns a Go function into a moejs host function. It reports the
@@ -35,12 +34,12 @@ var (
 // or error.
 func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) {
 	if fn == nil {
-		return nil, 0, fmt.Errorf("canopy: %w: nil func", ErrNotFunction)
+		return nil, 0, fmt.Errorf("js: %w: nil func", ErrNotFunction)
 	}
 	fv := reflect.ValueOf(fn)
 	ft := fv.Type()
 	if ft.Kind() != reflect.Func {
-		return nil, 0, fmt.Errorf("canopy: %w: %T", ErrNotFunction, fn)
+		return nil, 0, fmt.Errorf("js: %w: %T", ErrNotFunction, fn)
 	}
 	// A function with the engine's own signature needs no reflection.
 	if ft.ConvertibleTo(nativeFuncType) {
@@ -75,7 +74,7 @@ func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) 
 	case nout == 1:
 	case nout == 2 && ft.Out(1).Implements(errorType):
 	default:
-		return nil, 0, fmt.Errorf("canopy: %w: %s returns %d values; want (T), (T, error) or error",
+		return nil, 0, fmt.Errorf("js: %w: %s returns %d values; want (T), (T, error) or error",
 			ErrNotFunction, ft, nout)
 	}
 
@@ -169,7 +168,7 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 		if arg.IsObject() {
 			return reflect.ValueOf(arg.AsObject()), nil
 		}
-		return reflect.Zero(t), fmt.Errorf("canopy: argument %d is not an object", index+1)
+		return reflect.Zero(t), fmt.Errorf("js: argument %d is not an object", index+1)
 	case realmPtrType:
 		return reflect.ValueOf(r.raw.Realm()), nil
 	case runtimePtrType:
@@ -201,10 +200,10 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 		}
 	}
 	if gerr != nil {
-		return reflect.Zero(t), fmt.Errorf("canopy: argument %d: cannot convert JavaScript %s to %s: %w",
+		return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert JavaScript %s to %s: %w",
 			index+1, typeName(arg.Type()), t, gerr)
 	}
-	return reflect.Zero(t), fmt.Errorf("canopy: argument %d: cannot convert JavaScript %s to %s",
+	return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert JavaScript %s to %s",
 		index+1, typeName(arg.Type()), t)
 }
 
@@ -253,7 +252,7 @@ func (r *Runtime) returnValue(name string, v reflect.Value, t reflect.Type) (moe
 		}
 		p := v.Interface().(*Value)
 		if p == nil || p.rt != r {
-			return moejs.Undefined(), fmt.Errorf("canopy: %s returned a *Value of another runtime", name)
+			return moejs.Undefined(), fmt.Errorf("js: %s returned a *Value of another runtime", name)
 		}
 		return p.v, nil
 	}
@@ -303,7 +302,7 @@ func (r *Runtime) fromGo(v any) (moejs.Value, error) {
 			return moejs.Null(), nil
 		}
 		if x.rt != r {
-			return moejs.Undefined(), fmt.Errorf("canopy: *Value belongs to another runtime")
+			return moejs.Undefined(), fmt.Errorf("js: *Value belongs to another runtime")
 		}
 		return x.v, nil
 	case moejs.NativeFunc:

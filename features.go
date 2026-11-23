@@ -75,7 +75,7 @@ type Env struct {
 // Config returns a copy of the configuration that created the runtime.
 func (e *Env) Config() Config { return e.cfg }
 
-// Runtime returns the canopy runtime being installed.
+// Runtime returns the js runtime being installed.
 func (e *Env) Runtime() *Runtime { return e.r }
 
 // Raw returns the underlying moejs runtime.

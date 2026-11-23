@@ -11,35 +11,35 @@ import (
 	"testing"
 	"time"
 
-	canopy "github.com/malivvan/js"
+	"github.com/malivvan/js"
 )
 
 func TestDecodeLimits(t *testing.T) {
-	ex := newExec(t, canopy.Config{
+	ex := newExec(t, js.Config{
 		Name:   "decode.js",
 		Source: `export function big() { return "x".repeat(1024); }`,
-		Decode: canopy.DecodeOptions{MaxBytes: 32},
+		Decode: js.DecodeOptions{MaxBytes: 32},
 	})
-	if _, err := ex.Call(context.Background(), "big"); !errors.Is(err, canopy.ErrTooLarge) {
+	if _, err := ex.Call(context.Background(), "big"); !errors.Is(err, js.ErrTooLarge) {
 		t.Fatalf("decode error = %v, want ErrTooLarge", err)
 	}
 }
 
 func TestDefaultTimeout(t *testing.T) {
-	ex := newExec(t, canopy.Config{
+	ex := newExec(t, js.Config{
 		Name:           "spin.js",
 		Source:         `export function spin() { for (;;) {} }`,
 		DefaultTimeout: 25 * time.Millisecond,
 	})
 	_, err := ex.Call(context.Background(), "spin")
-	if !canopy.IsTimeout(err) {
+	if !js.IsTimeout(err) {
 		t.Fatalf("error = %v, want timeout", err)
 	}
 }
 
 func TestOnLoopError(t *testing.T) {
 	seen := make(chan error, 1)
-	ex := newExec(t, canopy.Config{
+	ex := newExec(t, js.Config{
 		Name:   "timer.js",
 		Source: `export function fire() { setTimeout(() => { throw new Error("timer boom"); }, 0); return "ok"; }`,
 		OnLoopError: func(err error) {
@@ -59,7 +59,7 @@ func TestOnLoopError(t *testing.T) {
 	}
 	select {
 	case err := <-seen:
-		if !canopy.IsException(err) {
+		if !js.IsException(err) {
 			t.Fatalf("loop error = %T %v", err, err)
 		}
 	case <-time.After(time.Second):
@@ -68,13 +68,13 @@ func TestOnLoopError(t *testing.T) {
 }
 
 func TestModuleLoader(t *testing.T) {
-	loader := canopy.ModuleLoaderFunc(func(referrer, specifier string) (canopy.ModuleSource, error) {
+	loader := js.ModuleLoaderFunc(func(referrer, specifier string) (js.ModuleSource, error) {
 		if specifier == "virtual:math" {
-			return canopy.ModuleSource{Name: "virtual:math.js", Source: `export const two = 2;`}, nil
+			return js.ModuleSource{Name: "virtual:math.js", Source: `export const two = 2;`}, nil
 		}
-		return canopy.ModuleSource{}, canopy.ErrModuleNotFound
+		return js.ModuleSource{}, js.ErrModuleNotFound
 	})
-	ex := newExec(t, canopy.Config{
+	ex := newExec(t, js.Config{
 		Name:   "loader.js",
 		Source: `import { two } from "virtual:math"; export function run() { return two + 40; }`,
 		Loader: loader,
@@ -89,7 +89,7 @@ func TestModuleLoader(t *testing.T) {
 }
 
 func TestValueMethods(t *testing.T) {
-	rt := newRuntime(t, canopy.Config{
+	rt := newRuntime(t, js.Config{
 		Name:   "value.js",
 		Source: `export const obj = { n: 1.5, ok: true, s: "text", f() { return this.n; } };`,
 	})
@@ -137,7 +137,7 @@ func TestValueMethods(t *testing.T) {
 }
 
 func TestAwaitPromiseValue(t *testing.T) {
-	rt := newRuntime(t, canopy.Config{
+	rt := newRuntime(t, js.Config{
 		Name:                 "await.js",
 		Source:               `export async function value() { return 7; }`,
 		DisableAwaitPromises: true,
@@ -160,18 +160,18 @@ func TestAwaitPromiseValue(t *testing.T) {
 
 func TestLifecycleHooks(t *testing.T) {
 	var ready, closed atomic.Int64
-	ex := newExec(t, canopy.Config{
+	ex := newExec(t, js.Config{
 		Name:    "hooks.js",
 		Source:  `export function run() { return 1; }`,
 		NoReuse: true,
-		OnRuntimeReady: func(rt *canopy.Runtime) error {
+		OnRuntimeReady: func(rt *js.Runtime) error {
 			if rt.ModuleName() != "hooks.js" {
 				t.Errorf("module name = %q", rt.ModuleName())
 			}
 			ready.Add(1)
 			return nil
 		},
-		OnRuntimeClose: func(*canopy.Runtime) error {
+		OnRuntimeClose: func(*js.Runtime) error {
 			closed.Add(1)
 			return nil
 		},
@@ -192,11 +192,11 @@ func TestHostFSConcurrent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ex := newExec(t, canopy.Config{
+	ex := newExec(t, js.Config{
 		Name: "fs.js",
 		Source: `import { readFile } from "node:fs/promises";
 export async function read() { return (await readFile("/workspace/hello.txt", "utf8")).trim(); }`,
-		FS:       &canopy.HostFS{Root: dir, Mount: "/workspace"},
+		FS:       &js.HostFS{Root: dir, Mount: "/workspace"},
 		PoolSize: 4,
 		MaxIdle:  4,
 	})

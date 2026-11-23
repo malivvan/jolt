@@ -132,7 +132,7 @@ func (e *Executor) Run(ctx context.Context, fn func(*Runtime) error) error {
 		return ErrClosed
 	}
 	if fn == nil {
-		return errors.New("canopy: nil Run function")
+		return errors.New("js: nil Run function")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -186,6 +186,9 @@ func newRuntimePool(cfg Config, prog *program) *runtimePool {
 }
 
 func (p *runtimePool) acquire(ctx context.Context) (*Runtime, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	select {
 	case p.sem <- struct{}{}:
 	case <-ctx.Done():

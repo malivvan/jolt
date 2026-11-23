@@ -1,7 +1,7 @@
-// Package canopy is a developer-focused JavaScript executor built on the
+// Package js is a developer-focused JavaScript executor built on the
 // moejs engine.
 //
-// Canopy wraps moejs with the pieces a Go program usually ends up writing
+// js wraps moejs with the pieces a Go program usually ends up writing
 // itself:
 //
 //   - a Config that gathers the engine, compiler, event-loop, sandbox and
@@ -25,7 +25,7 @@
 //	  return utils.prefix + " " + name.trim();
 //	}
 //	`
-//	exec, err := canopy.New(canopy.Config{
+//	exec, err := js.New(js.Config{
 //		Name:   "greet.js",
 //		Source: source,
 //		Globals: map[string]any{
@@ -53,7 +53,7 @@
 // A parameter of type context.Context receives the context of the running
 // call, so a JavaScript invocation is cancelled when the Go caller's context
 // ends. A parameter of type moejs.Value receives the raw engine value, and
-// *Value receives a canopy handle. A function may be variadic and may return
+// *Value receives a js handle. A function may be variadic and may return
 // (T), (T, error) or error. A Go panic inside a registered function becomes a
 // *PanicError thrown back to JavaScript; JavaScript may catch it as an Error.
 //
@@ -89,27 +89,28 @@
 //
 //	type metrics struct{ sink io.Writer }
 //
-//	func (m metrics) Install(env *canopy.Env) (func() error, error) {
+//	func (m metrics) Install(env *js.Env) (func() error, error) {
 //		return nil, env.SetFunc("recordMetric", m.record)
 //	}
 //
-//	exec, err := canopy.New(canopy.Config{
+//	exec, err := js.New(js.Config{
 //		Source:  source,
-//		Network: &canopy.HostNetwork{Client: client, Allow: canopy.AllowHosts("api.example.com")},
-//		Features: []canopy.Feature{metrics{sink}},
+//		Network: &js.HostNetwork{Client: client, Allow: js.AllowHosts("api.example.com")},
+//		Features: []js.Feature{metrics{sink}},
 //	})
 //
 // # WebAssembly
 //
-// Building with the "canopy_wasm" tag installs the browser WebAssembly
-// JavaScript API on top of wazero:
+// The browser WebAssembly JavaScript API is installed by default on top of
+// wazero. Build with the "nowasm" tag to leave it out:
 //
-//	go build -tags canopy_wasm ./...
+//	go build -tags nowasm ./...
 //
-// The tag is not named "wasm" because Go reserves that name for GOARCH=wasm;
-// enabling it on another architecture makes the standard library select its
-// wasm files and fail to compile. WebAssemblySupported reports whether the
-// binary has the feature.
+// The opt-out tag is not named "wasm" because Go reserves that name for
+// GOARCH=wasm; enabling it on another architecture makes the standard library
+// select its wasm files and fail to compile. The API is also left out when
+// building for GOARCH=wasm. WebAssemblySupported reports whether the binary
+// has the feature.
 //
 // The manager is configured like a browser: WebAssembly Core 2.0 features, a
 // 4 GiB memory ceiling, and no automatic "_start" unless
@@ -149,7 +150,7 @@
 // # Security
 //
 // moejs runs pure Go and provides memory limits, dynamic-code limits,
-// interrupts and frozen builtins. Canopy passes those settings through
+// interrupts and frozen builtins. js passes those settings through
 // Config. A sandbox is only as strong as its features: HostFS confines every
 // path to its Root, and HostNetwork with no Client has no network. Both
 // accept Allow hooks. Do not run untrusted code with NoFS/NoNetwork replaced
