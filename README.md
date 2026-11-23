@@ -1,8 +1,9 @@
 # jolt
 
-[![CI](https://github.com/malivvan/jolt/actions/workflows/ci.yml/badge.svg)](https://github.com/malivvan/jolt/actions/workflows/ci.yml)
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/malivvan/jolt.svg)](https://pkg.go.dev/github.com/malivvan/jolt)
-[![Go Report Card](https://goreportcard.com/badge/github.com/malivvan/jolt)](https://goreportcard.com/report/github.com/malivvan/jolt)
+[![CI](https://github.com/malivvan/jolt/actions/workflows/ci.yml/badge.svg)](https://github.com/malivvan/jolt/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/malivvan/jolt.svg?sort=semver)](https://github.com/malivvan/jolt/releases/latest)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/malivvan/jolt)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
