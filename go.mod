@@ -1,6 +1,6 @@
 module github.com/malivvan/jolt
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/MoeForge/moejs v0.1.1
@@ -8,6 +8,6 @@ require (
 )
 
 require (
-	github.com/MoeForge/moego v0.1.0-alpha.3 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	github.com/MoeForge/moego v0.1.0-alpha.5 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 )
