@@ -12,7 +12,7 @@ import (
 // type; for example a JavaScript throw is still an *Exception, and errors.As
 // finds it through jolt's *Error wrapper.
 var (
-	// ErrClosed is returned when a Runtime or Executor is used after Close.
+	// ErrClosed is returned when a VM or Executor is used after Close.
 	ErrClosed = errors.New("jolt: closed")
 	// ErrNotFunction is returned when a path or value names something that is
 	// not callable.
@@ -27,7 +27,7 @@ var (
 	// ErrNoSource is returned by New when Config names neither Source nor
 	// SourceFile.
 	ErrNoSource = errors.New("jolt: no source: set Config.Source or Config.SourceFile")
-	// ErrReentrant is returned when a Runtime method that drives the event
+	// ErrReentrant is returned when a VM method that drives the event
 	// loop is called from JavaScript running on that same loop, where a
 	// nested loop cannot run.
 	ErrReentrant = errors.New("jolt: cannot drive the event loop from inside JavaScript")

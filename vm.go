@@ -13,13 +13,13 @@ import (
 	"github.com/MoeForge/moejs/eventloop"
 )
 
-// Runtime owns one moejs runtime, its event loop and its installed features.
+// VM owns one moejs runtime, its event loop and its installed features.
 //
-// A Runtime is not safe for concurrent use: moejs requires one goroutine at a
+// A VM is not safe for concurrent use: moejs requires one goroutine at a
 // time, and so does jolt. Executor provides concurrency by keeping a pool of
-// runtimes. Context cancellation is safe: it interrupts the call from another
+// VMs. Context cancellation is safe: it interrupts the call from another
 // goroutine.
-type Runtime struct {
+type VM struct {
 	prog *program
 	cfg  Config
 	raw  *moejs.Runtime
@@ -40,34 +40,34 @@ type Runtime struct {
 
 // Raw returns the underlying moejs runtime for advanced use. The caller must
 // respect the same single-goroutine rule.
-func (r *Runtime) Raw() *moejs.Runtime { return r.raw }
+func (r *VM) Raw() *moejs.Runtime { return r.raw }
 
 // Loop returns the runtime's event loop.
-func (r *Runtime) Loop() *eventloop.Loop { return r.loop }
+func (r *VM) Loop() *eventloop.Loop { return r.loop }
 
 // Config returns the configuration that created the runtime.
-func (r *Runtime) Config() Config { return r.cfg }
+func (r *VM) Config() Config { return r.cfg }
 
 // Stats returns the engine's counters.
-func (r *Runtime) Stats() moejs.Stats { return r.raw.Stats() }
+func (r *VM) Stats() moejs.Stats { return r.raw.Stats() }
 
 // ModuleName returns the name of the compiled program.
-func (r *Runtime) ModuleName() string { return r.cfg.Name }
+func (r *VM) ModuleName() string { return r.cfg.Name }
 
 // Exports returns the export names of the loaded module, sorted. A classic
 // script has no exports.
-func (r *Runtime) Exports() []string {
+func (r *VM) Exports() []string {
 	if r.prog.entryModule == nil {
 		return nil
 	}
 	return r.prog.entryModule.Exports()
 }
 
-// Close releases the runtime: it runs OnRuntimeClose, closes the installed
+// Close releases the runtime: it runs OnVMClose, closes the installed
 // features and terminates the event loop. It returns the first errors joined.
 // Calling Close more than once is safe. Close must not be called from
 // JavaScript running on the runtime.
-func (r *Runtime) Close() error {
+func (r *VM) Close() error {
 	if r == nil {
 		return nil
 	}
@@ -78,8 +78,8 @@ func (r *Runtime) Close() error {
 		return nil
 	}
 	var errs []error
-	if r.cfg.OnRuntimeClose != nil {
-		if err := r.cfg.OnRuntimeClose(r); err != nil {
+	if r.cfg.OnVMClose != nil {
+		if err := r.cfg.OnVMClose(r); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -99,12 +99,12 @@ func (r *Runtime) Close() error {
 // objects, as in Set("utils.env", value). Values may be funcs, maps, slices,
 // structs or *Value handles. Set writes globals; module exports are read-only
 // bindings.
-func (r *Runtime) Set(name string, value any) error {
+func (r *VM) Set(name string, value any) error {
 	return r.SetPath(name, value)
 }
 
 // SetPath is Set with an explicit dotted path.
-func (r *Runtime) SetPath(path string, value any) error {
+func (r *VM) SetPath(path string, value any) error {
 	if err := r.ready("set", path); err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (r *Runtime) SetPath(path string, value any) error {
 // SetFunc installs a Go function as a global host function. Any function
 // signature supported by SetFunc's reflection rules works; see the package
 // documentation.
-func (r *Runtime) SetFunc(name string, fn any) error {
+func (r *VM) SetFunc(name string, fn any) error {
 	if err := r.ready("set", name); err != nil {
 		return err
 	}
@@ -197,12 +197,12 @@ func (r *Runtime) SetFunc(name string, fn any) error {
 
 // SetNamespace installs a map as one global object. Nested maps, slices,
 // funcs and *Value handles are converted recursively.
-func (r *Runtime) SetNamespace(name string, ns map[string]any) error {
+func (r *VM) SetNamespace(name string, ns map[string]any) error {
 	return r.Set(name, ns)
 }
 
 // SetValue installs a *Value of this runtime as a global.
-func (r *Runtime) SetValue(name string, v *Value) error {
+func (r *VM) SetValue(name string, v *Value) error {
 	if v == nil || v.rt != r {
 		return wrap("set", name, errors.New("value belongs to another runtime"))
 	}
@@ -213,7 +213,7 @@ func (r *Runtime) SetValue(name string, v *Value) error {
 // module's exports first and then in the global object; later elements are
 // ordinary property reads. A missing path yields an undefined Value, not an
 // error.
-func (r *Runtime) Get(path string) (*Value, error) {
+func (r *VM) Get(path string) (*Value, error) {
 	if err := r.ready("get", path); err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func (r *Runtime) Get(path string) (*Value, error) {
 }
 
 // Global reads a property of the global object.
-func (r *Runtime) Global(name string) (*Value, error) {
+func (r *VM) Global(name string) (*Value, error) {
 	if err := r.ready("get", name); err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (r *Runtime) Global(name string) (*Value, error) {
 }
 
 // Export reads a module export by name.
-func (r *Runtime) Export(name string) (*Value, error) {
+func (r *VM) Export(name string) (*Value, error) {
 	if err := r.ready("export", name); err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (r *Runtime) Export(name string) (*Value, error) {
 
 // Func resolves a path and returns a callable handle. It fails with
 // ErrNotFunction when the path names something that is not callable.
-func (r *Runtime) Func(path string) (*Function, error) {
+func (r *VM) Func(path string) (*Function, error) {
 	v, err := r.Get(path)
 	if err != nil {
 		return nil, err
@@ -262,12 +262,12 @@ func (r *Runtime) Func(path string) (*Function, error) {
 // the event loop and a rejection is returned as an error. A Call made from a
 // host function while the runtime is already running cannot start a nested
 // event loop: it runs synchronously and returns a promise unawaited.
-func (r *Runtime) Call(ctx context.Context, path string, args ...any) (*Value, error) {
+func (r *VM) Call(ctx context.Context, path string, args ...any) (*Value, error) {
 	return r.invoke(ctx, "call", path, moejs.Undefined(), false, moejs.Undefined(), args, true)
 }
 
 // CallInto calls path and decodes the result into out, a non-nil pointer.
-func (r *Runtime) CallInto(ctx context.Context, path string, out any, args ...any) error {
+func (r *VM) CallInto(ctx context.Context, path string, out any, args ...any) error {
 	res, err := r.Call(ctx, path, args...)
 	if err != nil {
 		return err
@@ -276,7 +276,7 @@ func (r *Runtime) CallInto(ctx context.Context, path string, out any, args ...an
 }
 
 // CallValue calls a JavaScript function value.
-func (r *Runtime) CallValue(ctx context.Context, fn *Value, args ...any) (*Value, error) {
+func (r *VM) CallValue(ctx context.Context, fn *Value, args ...any) (*Value, error) {
 	if fn == nil || fn.rt != r {
 		return nil, wrap("call", "", errors.New("value belongs to another runtime"))
 	}
@@ -285,7 +285,7 @@ func (r *Runtime) CallValue(ctx context.Context, fn *Value, args ...any) (*Value
 
 // CallValueInto calls a JavaScript function value and decodes the result into
 // out.
-func (r *Runtime) CallValueInto(ctx context.Context, fn *Value, out any, args ...any) error {
+func (r *VM) CallValueInto(ctx context.Context, fn *Value, out any, args ...any) error {
 	res, err := r.CallValue(ctx, fn, args...)
 	if err != nil {
 		return err
@@ -296,7 +296,7 @@ func (r *Runtime) CallValueInto(ctx context.Context, fn *Value, out any, args ..
 // Await waits for v to settle if it is a promise. It cannot be called from a
 // host function already running on the event loop, where a nested loop cannot
 // run; Value.Await has the same restriction.
-func (r *Runtime) Await(ctx context.Context, v *Value) (*Value, error) {
+func (r *VM) Await(ctx context.Context, v *Value) (*Value, error) {
 	if v == nil || v.rt != r {
 		return nil, wrap("await", "", errors.New("value belongs to another runtime"))
 	}
@@ -305,17 +305,17 @@ func (r *Runtime) Await(ctx context.Context, v *Value) (*Value, error) {
 
 // Eval compiles and runs source as a classic script in the runtime's global
 // environment and returns its completion value.
-func (r *Runtime) Eval(ctx context.Context, source string) (*Value, error) {
+func (r *VM) Eval(ctx context.Context, source string) (*Value, error) {
 	return r.eval(ctx, source, r.cfg.TypeScript)
 }
 
 // EvalTS is Eval for TypeScript source.
-func (r *Runtime) EvalTS(ctx context.Context, source string) (*Value, error) {
+func (r *VM) EvalTS(ctx context.Context, source string) (*Value, error) {
 	return r.eval(ctx, source, true)
 }
 
 // EvalInto evaluates source and decodes its completion value into out.
-func (r *Runtime) EvalInto(ctx context.Context, source string, out any) error {
+func (r *VM) EvalInto(ctx context.Context, source string, out any) error {
 	v, err := r.Eval(ctx, source)
 	if err != nil {
 		return err
@@ -323,7 +323,7 @@ func (r *Runtime) EvalInto(ctx context.Context, source string, out any) error {
 	return v.Into(out)
 }
 
-func (r *Runtime) eval(ctx context.Context, source string, ts bool) (*Value, error) {
+func (r *VM) eval(ctx context.Context, source string, ts bool) (*Value, error) {
 	if err := r.ready("eval", ""); err != nil {
 		return nil, err
 	}
@@ -363,7 +363,7 @@ func (r *Runtime) eval(ctx context.Context, source string, ts bool) (*Value, err
 
 // currentContext returns the context of the running call, for a host function
 // that takes a context.Context parameter.
-func (r *Runtime) currentContext() context.Context {
+func (r *VM) currentContext() context.Context {
 	if r.ctx != nil {
 		return r.ctx
 	}
@@ -371,7 +371,7 @@ func (r *Runtime) currentContext() context.Context {
 }
 
 // ready checks that the runtime can be used for op.
-func (r *Runtime) ready(op, path string) error {
+func (r *VM) ready(op, path string) error {
 	if r.closed.Load() {
 		return wrap(op, path, ErrClosed)
 	}
@@ -379,7 +379,7 @@ func (r *Runtime) ready(op, path string) error {
 }
 
 // lookup resolves a dotted path as Get does.
-func (r *Runtime) lookup(path string) (moejs.Value, error) {
+func (r *VM) lookup(path string) (moejs.Value, error) {
 	if path == "" {
 		return moejs.Undefined(), errors.New("empty path")
 	}
@@ -413,7 +413,7 @@ func (r *Runtime) lookup(path string) (moejs.Value, error) {
 }
 
 // convertArgs converts Go arguments to engine values.
-func (r *Runtime) convertArgs(args []any) ([]moejs.Value, error) {
+func (r *VM) convertArgs(args []any) ([]moejs.Value, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
@@ -428,7 +428,7 @@ func (r *Runtime) convertArgs(args []any) ([]moejs.Value, error) {
 	return out, nil
 }
 
-func (r *Runtime) callValue(ctx context.Context, op string, fn *Value, this moejs.Value, args []any, await bool) (*Value, error) {
+func (r *VM) callValue(ctx context.Context, op string, fn *Value, this moejs.Value, args []any, await bool) (*Value, error) {
 	if fn == nil || fn.rt != r {
 		return nil, wrap(op, "", errors.New("value belongs to another runtime"))
 	}
@@ -438,7 +438,7 @@ func (r *Runtime) callValue(ctx context.Context, op string, fn *Value, this moej
 // invoke is the one call path: resolve the function, convert arguments, call,
 // and optionally await a promise. It runs inside the event loop, except when a
 // host function calls back into JavaScript, where the loop is already running.
-func (r *Runtime) invoke(ctx context.Context, op, label string, fn moejs.Value, haveFn bool, this moejs.Value, args []any, await bool) (*Value, error) {
+func (r *VM) invoke(ctx context.Context, op, label string, fn moejs.Value, haveFn bool, this moejs.Value, args []any, await bool) (*Value, error) {
 	if err := r.ready(op, label); err != nil {
 		return nil, err
 	}
@@ -507,7 +507,7 @@ func (r *Runtime) invoke(ctx context.Context, op, label string, fn moejs.Value, 
 // onLoop runs fn on the runtime's goroutine with the event loop, watching ctx
 // for cancellation. It clears the interrupt and releases call data before
 // returning, so the runtime can be reused.
-func (r *Runtime) onLoop(ctx context.Context, op string, fn func(context.Context) error) (err error) {
+func (r *VM) onLoop(ctx context.Context, op string, fn func(context.Context) error) (err error) {
 	if r.closed.Load() {
 		return wrap(op, "", ErrClosed)
 	}
@@ -561,7 +561,7 @@ func (r *Runtime) onLoop(ctx context.Context, op string, fn func(context.Context
 	return runErr
 }
 
-func (r *Runtime) execContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (r *VM) execContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -577,7 +577,7 @@ func (r *Runtime) execContext(ctx context.Context) (context.Context, context.Can
 // must run on the runtime's goroutine inside the event loop. The returned
 // cleanup releases the loop hold when the caller stops waiting; it is safe to
 // call after the promise has settled.
-func (r *Runtime) awaitInto(p moejs.Value, res *moejs.Value, errOut *error) (cleanup func()) {
+func (r *VM) awaitInto(p moejs.Value, res *moejs.Value, errOut *error) (cleanup func()) {
 	state, val, ok := moejs.PromiseResult(p)
 	if !ok {
 		*res = p
@@ -626,7 +626,7 @@ func (r *Runtime) awaitInto(p moejs.Value, res *moejs.Value, errOut *error) (cle
 	return release
 }
 
-func (r *Runtime) awaitValue(ctx context.Context, v *Value) (*Value, error) {
+func (r *VM) awaitValue(ctx context.Context, v *Value) (*Value, error) {
 	if err := r.ready("await", ""); err != nil {
 		return nil, err
 	}
@@ -653,7 +653,7 @@ func (r *Runtime) awaitValue(ctx context.Context, v *Value) (*Value, error) {
 // enrich fills in the stack of a thrown JavaScript Error. moejs carries the
 // stack on the Error object; copying it to the Go exception makes it available
 // after the call and through JSStack.
-func (r *Runtime) enrich(err error) error {
+func (r *VM) enrich(err error) error {
 	var exc *moejs.Exception
 	if errors.As(err, &exc) && exc.Stack == "" {
 		exc.Stack = r.raw.StackTrace(exc)
@@ -662,7 +662,7 @@ func (r *Runtime) enrich(err error) error {
 }
 
 // rejectionError converts a promise rejection reason to a Go error.
-func (r *Runtime) rejectionError(reason moejs.Value) error {
+func (r *VM) rejectionError(reason moejs.Value) error {
 	js := &JSError{}
 	if reason.IsObject() {
 		js.Name = r.stringProp(reason, "name")
@@ -692,7 +692,7 @@ func (r *Runtime) rejectionError(reason moejs.Value) error {
 	return js
 }
 
-func (r *Runtime) stringProp(v moejs.Value, key string) string {
+func (r *VM) stringProp(v moejs.Value, key string) string {
 	p, err := r.raw.Get(v, key)
 	if err != nil || !p.IsString() {
 		return ""
@@ -701,7 +701,7 @@ func (r *Runtime) stringProp(v moejs.Value, key string) string {
 }
 
 // setMember sets one property of a JavaScript object value.
-func (r *Runtime) setMember(target moejs.Value, key string, value any) error {
+func (r *VM) setMember(target moejs.Value, key string, value any) error {
 	if err := r.ready("set", key); err != nil {
 		return err
 	}
@@ -718,7 +718,7 @@ func (r *Runtime) setMember(target moejs.Value, key string, value any) error {
 
 // Function is a resolved JavaScript function handle.
 type Function struct {
-	rt    *Runtime
+	rt    *VM
 	name  string
 	value *Value
 }

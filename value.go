@@ -9,15 +9,15 @@ import (
 	"github.com/MoeForge/moejs/engine"
 )
 
-// Value is a handle to one JavaScript value. It belongs to the Runtime that
-// produced it; it stays valid until that runtime closes. A Value of a runtime
+// Value is a handle to one JavaScript value. It belongs to the VM that
+// produced it; it stays valid until that VM closes. A Value of a VM
 // that is pooled by an Executor is only valid inside Executor.Run.
 type Value struct {
-	rt *Runtime
+	rt *VM
 	v  moejs.Value
 }
 
-func (r *Runtime) wrap(v moejs.Value) *Value { return &Value{rt: r, v: v} }
+func (r *VM) wrap(v moejs.Value) *Value { return &Value{rt: r, v: v} }
 
 // Raw returns the underlying engine value. Advanced users can pass it to
 // moejs APIs directly.
@@ -28,8 +28,8 @@ func (v *Value) Raw() moejs.Value {
 	return v.v
 }
 
-// Runtime returns the runtime the value belongs to.
-func (v *Value) Runtime() *Runtime {
+// VM returns the VM the value belongs to.
+func (v *Value) VM() *VM {
 	if v == nil {
 		return nil
 	}
@@ -212,7 +212,7 @@ func (v *Value) Get(key string) (*Value, error) {
 	return v.rt.wrap(got), wrap("get", key, err)
 }
 
-// Set writes a property. value is converted like Runtime.Set's argument.
+// Set writes a property. value is converted like VM.Set's argument.
 func (v *Value) Set(key string, value any) error {
 	if err := v.check(); err != nil {
 		return err
@@ -220,7 +220,7 @@ func (v *Value) Set(key string, value any) error {
 	return v.rt.setMember(v.v, key, value)
 }
 
-// Call calls the value as a function with this = undefined. Like Runtime.Call,
+// Call calls the value as a function with this = undefined. Like VM.Call,
 // it awaits a returned promise unless Config.DisableAwaitPromises is set; from
 // a host function already running on the loop, the call is synchronous and the
 // promise is returned unawaited.

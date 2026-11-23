@@ -569,7 +569,7 @@ func TestWebAssemblyDisabled(t *testing.T) {
 	ex, err := New(Config{
 		Name:        "wasm-off.js",
 		Source:      `export function type() { return typeof WebAssembly; }`,
-		WebAssembly: WebAssemblyOptions{Disable: true},
+		WebAssembly: WasmOptions{Disable: true},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -819,8 +819,8 @@ export async function run(bytes) {
   const p = mem[0] | mem[1] << 8 | mem[2] << 16 | mem[3] << 24;
   return [p, mem[p], mem[p + 1], mem[p + 2], mem[p + 3]];
 }`,
-		WebAssembly: WebAssemblyOptions{
-			WASI: WebAssemblyWASIOptions{Args: []string{"app", "arg"}},
+		WebAssembly: WasmOptions{
+			WASI: WasiOptions{Args: []string{"app", "arg"}},
 		},
 	})
 	if err != nil {
@@ -850,8 +850,8 @@ export async function run(bytes) {
   const p = mem[0] | mem[1] << 8 | mem[2] << 16 | mem[3] << 24;
   return [p, mem[p], mem[p + 1], mem[p + 2], mem[p + 3]];
 }`,
-		WebAssembly: WebAssemblyOptions{
-			WASI: WebAssemblyWASIOptions{
+		WebAssembly: WasmOptions{
+			WASI: WasiOptions{
 				Args:     []string{"app", "arg"},
 				RunStart: true,
 			},
@@ -903,8 +903,8 @@ export async function run(bytes) {
   await WebAssembly.instantiate(bytes, {});
   return "ok";
 }`,
-		WebAssembly: WebAssemblyOptions{
-			WASI: WebAssemblyWASIOptions{RunStart: true},
+		WebAssembly: WasmOptions{
+			WASI: WasiOptions{RunStart: true},
 		},
 	})
 	if err != nil {
@@ -934,8 +934,8 @@ export async function run(bytes) {
   await WebAssembly.instantiate(bytes, {});
   return "ok";
 }`,
-		WebAssembly: WebAssemblyOptions{
-			WASI: WebAssemblyWASIOptions{RunStart: true},
+		WebAssembly: WasmOptions{
+			WASI: WasiOptions{RunStart: true},
 		},
 	})
 	if err != nil {
@@ -965,8 +965,8 @@ export async function run(bytes) {
     return e.constructor.name;
   }
 }`,
-		WebAssembly: WebAssemblyOptions{
-			WASI: WebAssemblyWASIOptions{Disable: true},
+		WebAssembly: WasmOptions{
+			WASI: WasiOptions{Disable: true},
 		},
 	})
 	if err != nil {
@@ -1442,7 +1442,7 @@ func TestCoverageWasmWASIConfigBranches(t *testing.T) {
 	got, err := New(Config{
 		Name:   "wasi-branches.js",
 		Source: `export async function run(bytes) { const { instance } = await WebAssembly.instantiate(bytes, {}); instance.exports._start(); return "ok"; }`,
-		WebAssembly: WebAssemblyOptions{WASI: WebAssemblyWASIOptions{
+		WebAssembly: WasmOptions{WASI: WasiOptions{
 			Args:   []string{"app"},
 			Env:    map[string]string{"A": "1"},
 			FS:     fstest.MapFS{},
@@ -1542,9 +1542,9 @@ func TestCoverageWasmDirectBranches(t *testing.T) {
 	if _, err := wasmGlobalInit(api.ValueType(0x7b), 0); err == nil {
 		t.Fatalf("wasmGlobalInit(v128) accepted")
 	}
-	rt, err := NewRuntime(Config{Source: "1"})
+	rt, err := NewVM(Config{Source: "1"})
 	if err != nil {
-		t.Fatalf("NewRuntime: %v", err)
+		t.Fatalf("NewVM: %v", err)
 	}
 	defer rt.Close()
 	s := &wasmState{}
@@ -1583,9 +1583,9 @@ func TestCoverageWasmInstantiateSupport(t *testing.T) {
 }
 
 func TestCoverageWasmToWasmUnsupported(t *testing.T) {
-	rt, err := NewRuntime(Config{Source: "1"})
+	rt, err := NewVM(Config{Source: "1"})
 	if err != nil {
-		t.Fatalf("NewRuntime: %v", err)
+		t.Fatalf("NewVM: %v", err)
 	}
 	defer rt.Close()
 	s := &wasmState{}

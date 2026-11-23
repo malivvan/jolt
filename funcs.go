@@ -20,7 +20,7 @@ var (
 	ptrValueType   = reflect.TypeOf((*Value)(nil))
 	nativeFuncType = reflect.TypeOf(moejs.NativeFunc(nil))
 	realmPtrType   = reflect.TypeOf((*moejs.Realm)(nil))
-	runtimePtrType = reflect.TypeOf((*Runtime)(nil))
+	vmPtrType      = reflect.TypeOf((*VM)(nil))
 	objectPtrType  = reflect.TypeOf((*moejs.Object)(nil))
 	byteSliceType  = reflect.TypeOf([]byte(nil))
 )
@@ -28,11 +28,11 @@ var (
 // adaptFunc turns a Go function into a moejs host function. It reports the
 // JavaScript `length` property to use.
 //
-// Parameters may be context.Context, *Runtime, *moejs.Realm, moejs.Value,
+// Parameters may be context.Context, *VM, *moejs.Realm, moejs.Value,
 // *Value, *moejs.Object, or any type moejs can decode a JavaScript value
 // into. The last parameter may be variadic. Results may be (T), (T, error)
 // or error.
-func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) {
+func (r *VM) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) {
 	if fn == nil {
 		return nil, 0, fmt.Errorf("jolt: %w: nil func", ErrNotFunction)
 	}
@@ -55,7 +55,7 @@ func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) 
 	injected := 0
 	if ft.NumIn() > 0 {
 		switch ft.In(0) {
-		case contextType, runtimePtrType, realmPtrType:
+		case contextType, vmPtrType, realmPtrType:
 			injected = 1
 		}
 	}
@@ -93,7 +93,7 @@ func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) 
 				switch pt {
 				case contextType:
 					in = append(in, reflect.ValueOf(r.currentContext()))
-				case runtimePtrType:
+				case vmPtrType:
 					in = append(in, reflect.ValueOf(r))
 				case realmPtrType:
 					in = append(in, reflect.ValueOf(realm))
@@ -158,7 +158,7 @@ func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) 
 }
 
 // paramValue converts one JavaScript argument to a Go parameter of type t.
-func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflect.Value, error) {
+func (r *VM) paramValue(arg moejs.Value, t reflect.Type, index int) (reflect.Value, error) {
 	switch t {
 	case valueType:
 		return reflect.ValueOf(arg), nil
@@ -171,7 +171,7 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 		return reflect.Zero(t), fmt.Errorf("jolt: argument %d is not an object", index+1)
 	case realmPtrType:
 		return reflect.ValueOf(r.raw.Realm()), nil
-	case runtimePtrType:
+	case vmPtrType:
 		return reflect.ValueOf(r), nil
 	case contextType:
 		return reflect.ValueOf(r.currentContext()), nil
@@ -255,7 +255,7 @@ func isNumericKind(k reflect.Kind) bool {
 // host function can call a callback JavaScript passed it. The returned func
 // calls arg with this = undefined and converts the result back to t's result
 // type. It must be called on the runtime's goroutine, like any other call.
-func (r *Runtime) funcValue(arg moejs.Value, t reflect.Type, index int) (reflect.Value, error) {
+func (r *VM) funcValue(arg moejs.Value, t reflect.Type, index int) (reflect.Value, error) {
 	if t.IsVariadic() {
 		return reflect.Zero(t), fmt.Errorf("jolt: argument %d: cannot convert a JavaScript function to variadic %s", index+1, t)
 	}
@@ -316,7 +316,7 @@ func errorReflect(err error) reflect.Value {
 }
 
 // returnValue converts a Go result to a JavaScript value.
-func (r *Runtime) returnValue(name string, v reflect.Value, t reflect.Type) (moejs.Value, error) {
+func (r *VM) returnValue(name string, v reflect.Value, t reflect.Type) (moejs.Value, error) {
 	if t == valueType {
 		return v.Interface().(moejs.Value), nil
 	}
@@ -362,7 +362,7 @@ func errorValue(v reflect.Value) error {
 // funcs so that host functions can be exposed without being wrapped by hand.
 // Values without funcs or *Value handles fall back to moejs's FromGo
 // conversion, including its lazy map conversion and JSON encoding of structs.
-func (r *Runtime) fromGo(v any) (moejs.Value, error) {
+func (r *VM) fromGo(v any) (moejs.Value, error) {
 	switch x := v.(type) {
 	case nil:
 		return r.raw.FromGo(nil)
@@ -446,7 +446,7 @@ func (r *Runtime) fromGo(v any) (moejs.Value, error) {
 	return r.raw.FromGo(v)
 }
 
-func (r *Runtime) fromGoMap(m map[string]any) (moejs.Value, error) {
+func (r *VM) fromGoMap(m map[string]any) (moejs.Value, error) {
 	if m == nil {
 		return r.raw.FromGo(nil)
 	}
@@ -464,7 +464,7 @@ func (r *Runtime) fromGoMap(m map[string]any) (moejs.Value, error) {
 	return engine.ObjectValue(o), nil
 }
 
-func (r *Runtime) fromGoSlice(s []any) (moejs.Value, error) {
+func (r *VM) fromGoSlice(s []any) (moejs.Value, error) {
 	if s == nil {
 		return r.raw.FromGo(nil)
 	}

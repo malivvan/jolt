@@ -64,19 +64,19 @@ type NoNetwork struct{}
 // Install does nothing.
 func (NoNetwork) Install(*Env) (func() error, error) { return nil, nil }
 
-// Env is what a Feature sees while it installs: the runtime, its event loop
+// Env is what a Feature sees while it installs: the VM, its event loop
 // and the helper methods of the high-level API. All methods run on the
-// runtime's goroutine.
+// VM's goroutine.
 type Env struct {
-	r   *Runtime
+	r   *VM
 	cfg Config
 }
 
 // Config returns a copy of the configuration that created the runtime.
 func (e *Env) Config() Config { return e.cfg }
 
-// Runtime returns the jolt runtime being installed.
-func (e *Env) Runtime() *Runtime { return e.r }
+// VM returns the VM being installed.
+func (e *Env) VM() *VM { return e.r }
 
 // Raw returns the underlying moejs runtime.
 func (e *Env) Raw() *moejs.Runtime { return e.r.raw }
@@ -85,15 +85,15 @@ func (e *Env) Raw() *moejs.Runtime { return e.r.raw }
 func (e *Env) Loop() *eventloop.Loop { return e.r.loop }
 
 // Set installs a global value in the runtime, with the same conversion as
-// Runtime.Set.
+// VM.Set.
 func (e *Env) Set(name string, v any) error { return e.r.Set(name, v) }
 
 // SetFunc installs a global Go function, with the same conversion as
-// Runtime.SetFunc.
+// VM.SetFunc.
 func (e *Env) SetFunc(name string, fn any) error { return e.r.SetFunc(name, fn) }
 
 // SetNamespace installs a global object from a map, with the same conversion
-// as Runtime.SetNamespace.
+// as VM.SetNamespace.
 func (e *Env) SetNamespace(name string, ns map[string]any) error {
 	return e.r.SetNamespace(name, ns)
 }

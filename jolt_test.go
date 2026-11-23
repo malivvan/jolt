@@ -36,11 +36,11 @@ func newExec(t *testing.T, cfg Config) *Executor {
 	return ex
 }
 
-func newRuntime(t *testing.T, cfg Config) *Runtime {
+func newVM(t *testing.T, cfg Config) *VM {
 	t.Helper()
-	rt, err := NewRuntime(cfg)
+	rt, err := NewVM(cfg)
 	if err != nil {
-		t.Fatalf("NewRuntime: %v", err)
+		t.Fatalf("NewVM: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := rt.Close(); err != nil {
@@ -167,8 +167,8 @@ export function echo(t) { return host.echo(t); }`,
 	}
 }
 
-func TestRuntimeAccessAndValues(t *testing.T) {
-	rt := newRuntime(t, Config{
+func TestVMAccessAndValues(t *testing.T) {
+	rt := newVM(t, Config{
 		Name: "state.js",
 		Source: `
 export const config = { retries: 3, tags: ["a", "b"] };
@@ -277,7 +277,7 @@ export function waitFor(v) { return Promise.resolve(v); }`,
 }
 
 func TestScriptMode(t *testing.T) {
-	rt := newRuntime(t, Config{
+	rt := newVM(t, Config{
 		Name:   "script.js",
 		Mode:   ModeScript,
 		Source: `function twice(x) { return x * 2 } var answer = twice(21);`,
@@ -563,7 +563,7 @@ func TestConcurrentExecutor(t *testing.T) {
 		Source:   `export function add(a, b) { return a + b; }`,
 		PoolSize: 4,
 		MaxIdle:  4,
-		OnRuntimeReady: func(*Runtime) error {
+		OnVMReady: func(*VM) error {
 			ready.Add(1)
 			return nil
 		},
@@ -602,7 +602,7 @@ func TestNoReuse(t *testing.T) {
 		Name:    "add.js",
 		Source:  `export function add(a, b) { return a + b; }`,
 		NoReuse: true,
-		OnRuntimeReady: func(*Runtime) error {
+		OnVMReady: func(*VM) error {
 			created.Add(1)
 			return nil
 		},
@@ -669,9 +669,9 @@ func TestWebAssemblyBuildGating(t *testing.T) {
 		t.Fatalf("typeof WebAssembly = %#v, want %q", got, want)
 	}
 	if !WebAssemblySupported {
-		if _, err := NewRuntime(Config{
+		if _, err := NewVM(Config{
 			Source:      "1",
-			WebAssembly: WebAssemblyOptions{MemoryLimitPages: 1},
+			WebAssembly: WasmOptions{MemoryLimitPages: 1},
 		}); err == nil {
 			t.Fatalf("memory options in a nowasm build were accepted")
 		}
@@ -769,11 +769,11 @@ func covExec(t *testing.T, cfg Config) *Executor {
 	return ex
 }
 
-func covRuntime(t *testing.T, cfg Config) *Runtime {
+func covVM(t *testing.T, cfg Config) *VM {
 	t.Helper()
-	rt, err := NewRuntime(cfg)
+	rt, err := NewVM(cfg)
 	if err != nil {
-		t.Fatalf("NewRuntime: %v", err)
+		t.Fatalf("NewVM: %v", err)
 	}
 	t.Cleanup(func() { _ = rt.Close() })
 	return rt
@@ -854,7 +854,7 @@ func TestModuleLoader(t *testing.T) {
 }
 
 func TestValueMethods(t *testing.T) {
-	rt := newRuntime(t, Config{
+	rt := newVM(t, Config{
 		Name:   "value.js",
 		Source: `export const obj = { n: 1.5, ok: true, s: "text", f() { return this.n; } };`,
 	})
@@ -902,7 +902,7 @@ func TestValueMethods(t *testing.T) {
 }
 
 func TestAwaitPromiseValue(t *testing.T) {
-	rt := newRuntime(t, Config{
+	rt := newVM(t, Config{
 		Name:                 "await.js",
 		Source:               `export async function value() { return 7; }`,
 		DisableAwaitPromises: true,
@@ -929,14 +929,14 @@ func TestLifecycleHooks(t *testing.T) {
 		Name:    "hooks.js",
 		Source:  `export function run() { return 1; }`,
 		NoReuse: true,
-		OnRuntimeReady: func(rt *Runtime) error {
+		OnVMReady: func(rt *VM) error {
 			if rt.ModuleName() != "hooks.js" {
 				t.Errorf("module name = %q", rt.ModuleName())
 			}
 			ready.Add(1)
 			return nil
 		},
-		OnRuntimeClose: func(*Runtime) error {
+		OnVMClose: func(*VM) error {
 			closed.Add(1)
 			return nil
 		},
@@ -1013,7 +1013,7 @@ func TestCoverageConfigValidation(t *testing.T) {
 		{Source: "1", MemoryLimit: -1},
 		{Source: "1", PoolSize: -1},
 		{Source: "1", MaxIdle: -1},
-		{Source: "1", WebAssembly: WebAssemblyOptions{MemoryLimitPages: 65537}},
+		{Source: "1", WebAssembly: WasmOptions{MemoryLimitPages: 65537}},
 	}
 	for i, cfg := range bad {
 		if _, err := New(cfg); err == nil {
@@ -1040,8 +1040,8 @@ func TestCoverageConfigDefaultsAndClones(t *testing.T) {
 		Globals:    globals,
 		Functions:  functions,
 		Features:   features,
-		WebAssembly: WebAssemblyOptions{
-			WASI: WebAssemblyWASIOptions{Args: args, Env: env},
+		WebAssembly: WasmOptions{
+			WASI: WasiOptions{Args: args, Env: env},
 		},
 	})
 	cfg := ex.Config()
@@ -1066,7 +1066,7 @@ func TestCoverageConfigDefaultsAndClones(t *testing.T) {
 	}
 
 	ex2 := covExec(t, Config{Source: "1"})
-	if got := ex2.Config().Name; got != "js" {
+	if got := ex2.Config().Name; got != "jolt.js" {
 		t.Fatalf("default Name = %q", got)
 	}
 	if _, err := New(Config{SourceFile: filepath.Join(dir, "missing.js")}); err == nil {
@@ -1108,10 +1108,10 @@ func TestCoverageHelpers(t *testing.T) {
 		t.Fatalf("cloneSlice = %v", s)
 	}
 
-	if (WebAssemblyWASIOptions{}).configured() || (WebAssemblyWASIOptions{Disable: true}).configured() {
+	if (WasiOptions{}).configured() || (WasiOptions{Disable: true}).configured() {
 		t.Fatalf("empty/Disable-only WASI options reported configured")
 	}
-	configured := []WebAssemblyWASIOptions{
+	configured := []WasiOptions{
 		{Args: []string{"a"}},
 		{Env: map[string]string{"K": "V"}},
 		{FS: fstest.MapFS{}},
@@ -1271,12 +1271,12 @@ export function add(a, b) { return a + b; }`,
 				t.Fatalf("Run did not propagate a panic")
 			}
 		}()
-		_ = panicky.Run(ctx, func(*Runtime) error { panic("boom") })
+		_ = panicky.Run(ctx, func(*VM) error { panic("boom") })
 	}()
 }
 
-func TestCoverageRuntimeSurface(t *testing.T) {
-	rt := covRuntime(t, Config{
+func TestCoverageVMSurface(t *testing.T) {
+	rt := covVM(t, Config{
 		Name: "runtime.js",
 		Source: `export const value = 7;
 export const obj = { n: 1.5, f() { return this.n; } };
@@ -1311,7 +1311,7 @@ export function later() { return Promise.resolve(5); }`,
 	if err := rt.SetValue("bad", nil); err == nil {
 		t.Fatalf("SetValue(nil) accepted")
 	}
-	other := covRuntime(t, Config{Source: "export const x = 1;"})
+	other := covVM(t, Config{Source: "export const x = 1;"})
 	foreign, _ := other.Get("x")
 	if err := rt.SetValue("bad", foreign); err == nil {
 		t.Fatalf("SetValue(foreign) accepted")
@@ -1446,7 +1446,7 @@ export function later() { return Promise.resolve(5); }`,
 		t.Fatalf("close message = %q", got.String())
 	}
 
-	closed := covRuntime(t, Config{Source: "export const x = 1;"})
+	closed := covVM(t, Config{Source: "export const x = 1;"})
 	if err := closed.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -1456,7 +1456,7 @@ export function later() { return Promise.resolve(5); }`,
 }
 
 func TestCoverageValueSurface(t *testing.T) {
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Name:                 "values.js",
 		DisableAwaitPromises: true,
 		Source: `export const undef = undefined;
@@ -1491,7 +1491,7 @@ export function fn() { return 1; }`,
 		if got := v.Type(); got != c.want {
 			t.Fatalf("%s.Type() = %q, want %q", c.name, got, c.want)
 		}
-		if v.Runtime() != rt {
+		if v.VM() != rt {
 			t.Fatalf("%s accessors failed", c.name)
 		}
 	}
@@ -1586,7 +1586,7 @@ export function fn() { return 1; }`,
 	}
 
 	var nilV *Value
-	if !nilV.Raw().IsUndefined() || nilV.Runtime() != nil || nilV.String() != "undefined" ||
+	if !nilV.Raw().IsUndefined() || nilV.VM() != nil || nilV.String() != "undefined" ||
 		nilV.Bool() || nilV.Type() != "undefined" || nilV.IsNull() || !nilV.IsUndefined() ||
 		!nilV.IsNullish() || nilV.IsObject() || nilV.IsFunction() || nilV.IsArray() || nilV.IsPromise() {
 		t.Fatalf("nil Value accessors failed")
@@ -1637,9 +1637,9 @@ func TestCoverageFuncsConversion(t *testing.T) {
 		t.Fatalf("isNumericKind failed")
 	}
 
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Source: `export function run() {
-  return [injectCtx(), injectRuntime(), injectRealm(), injectValues(1, 2, {}), variadic("x", 1, 2), obj({}), retValue(), retNilValue(), retObject()];
+  return [injectCtx(), injectVM(), injectRealm(), injectValues(1, 2, {}), variadic("x", 1, 2), obj({}), retValue(), retNilValue(), retObject()];
 }`,
 	})
 	if err := rt.SetFunc("injectCtx", func(ctx context.Context) string {
@@ -1650,13 +1650,13 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetFunc injectCtx: %v", err)
 	}
-	if err := rt.SetFunc("injectRuntime", func(r *Runtime) string {
+	if err := rt.SetFunc("injectVM", func(r *VM) string {
 		if r != rt {
 			return "bad"
 		}
 		return "runtime"
 	}); err != nil {
-		t.Fatalf("SetFunc injectRuntime: %v", err)
+		t.Fatalf("SetFunc injectVM: %v", err)
 	}
 	if err := rt.SetFunc("injectRealm", func(realm *moejs.Realm) string {
 		if realm == nil {
@@ -1728,7 +1728,7 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}
 
 	// Object parameter conversion failure.
-	rt2 := covRuntime(t, Config{Source: `export function call() { try { obj(1); return "no"; } catch (e) { return e.message; } }`})
+	rt2 := covVM(t, Config{Source: `export function call() { try { obj(1); return "no"; } catch (e) { return e.message; } }`})
 	if err := rt2.SetFunc("obj", func(o *moejs.Object) string { return "ok" }); err != nil {
 		t.Fatalf("SetFunc obj2: %v", err)
 	}
@@ -1739,8 +1739,8 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}
 
 	// Return values: nil and foreign jolt values.
-	rt3 := covRuntime(t, Config{Source: `export function call(f) { try { return f(); } catch (e) { return e.message; } }`})
-	other := covRuntime(t, Config{Source: "export const x = 1;"})
+	rt3 := covVM(t, Config{Source: `export function call(f) { try { return f(); } catch (e) { return e.message; } }`})
+	other := covVM(t, Config{Source: "export const x = 1;"})
 	foreign, _ := other.Get("x")
 	if err := rt3.SetFunc("foreign", func() *Value { return foreign }); err != nil {
 		t.Fatalf("SetFunc foreign: %v", err)
@@ -1765,7 +1765,7 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}
 
 	// fromGo containers and funcs.
-	rt4 := covRuntime(t, Config{
+	rt4 := covVM(t, Config{
 		Name: "go.js",
 		Source: `export function shape() {
   return [typeof anon, m.a, m.b, sl.length, nested.x[1], bytes instanceof ArrayBuffer];
@@ -1847,7 +1847,7 @@ func TestCoverageFuncsConversion(t *testing.T) {
 	}
 
 	// funcValue: every result shape, plus its rejection paths.
-	cbRT := covRuntime(t, Config{Source: `export const five = () => 5;
+	cbRT := covVM(t, Config{Source: `export const five = () => 5;
 export const obj = () => ({});
 export const boom = () => { throw new Error('cb'); };`})
 	jsFn := mustJSFunc(t, cbRT, "five").Raw()
@@ -1944,7 +1944,7 @@ export const boom = () => { throw new Error('cb'); };`})
 	}
 
 	// A panicking host function becomes a PanicError that JavaScript can catch.
-	rt5 := covRuntime(t, Config{Source: `export function boom() { try { boom2(); return "no"; } catch (e) { return e.message; } }`})
+	rt5 := covVM(t, Config{Source: `export function boom() { try { boom2(); return "no"; } catch (e) { return e.message; } }`})
 	if err := rt5.SetFunc("boom2", func() { panic("kaboom") }); err != nil {
 		t.Fatalf("SetFunc boom: %v", err)
 	}
@@ -1957,7 +1957,7 @@ export const boom = () => { throw new Error('cb'); };`})
 	}
 }
 
-func mustJSFunc(t *testing.T, rt *Runtime, path string) *Value {
+func mustJSFunc(t *testing.T, rt *VM, path string) *Value {
 	t.Helper()
 	v, err := rt.Get(path)
 	if err != nil {
@@ -1968,7 +1968,7 @@ func mustJSFunc(t *testing.T, rt *Runtime, path string) *Value {
 
 func TestCoverageConsole(t *testing.T) {
 	var buf strings.Builder
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Console: &buf,
 		Source: `export function all() {
   console.log("a", 1, { b: 2 });
@@ -1988,7 +1988,7 @@ func TestCoverageConsole(t *testing.T) {
 		}
 	}
 	// A nil console discards output.
-	silent := covRuntime(t, Config{Source: `console.log("quiet")`})
+	silent := covVM(t, Config{Source: `console.log("quiet")`})
 	if _, err := silent.Eval(context.Background(), "1"); err != nil {
 		t.Fatalf("silent: %v", err)
 	}
@@ -2026,7 +2026,7 @@ func TestCoverageHostFSAndNetwork(t *testing.T) {
 		t.Fatalf("NoNetwork.Install: %v", err)
 	}
 
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Source:  `export function kind() { return typeof fetch; }`,
 		Network: &HostNetwork{},
 	})
@@ -2222,7 +2222,7 @@ func TestCoverageModuleSources(t *testing.T) {
 	}
 
 	// Configuration and feature failures abort runtime creation.
-	if _, err := NewRuntime(Config{
+	if _, err := NewVM(Config{
 		Source: "1",
 		Features: []Feature{FeatureFunc(func(*Env) (func() error, error) {
 			return nil, errors.New("feature boom")
@@ -2230,13 +2230,13 @@ func TestCoverageModuleSources(t *testing.T) {
 	}); err == nil {
 		t.Fatalf("feature install error was swallowed")
 	}
-	if _, err := NewRuntime(Config{
-		Source:         "1",
-		OnRuntimeReady: func(*Runtime) error { return errors.New("ready boom") },
+	if _, err := NewVM(Config{
+		Source:    "1",
+		OnVMReady: func(*VM) error { return errors.New("ready boom") },
 	}); err == nil {
-		t.Fatalf("OnRuntimeReady error was swallowed")
+		t.Fatalf("OnVMReady error was swallowed")
 	}
-	if _, err := NewRuntime(Config{
+	if _, err := NewVM(Config{
 		Source:    "1",
 		Functions: map[string]any{"bad": 1},
 	}); err == nil {
@@ -2247,7 +2247,7 @@ func TestCoverageModuleSources(t *testing.T) {
 func TestCoverageFeaturesAndEnv(t *testing.T) {
 	var sawCleanup bool
 	feat := FeatureFunc(func(env *Env) (func() error, error) {
-		if env.Runtime() == nil || env.Raw() == nil || env.Loop() == nil {
+		if env.VM() == nil || env.Raw() == nil || env.Loop() == nil {
 			t.Errorf("feature environment is incomplete")
 		}
 		if env.Config().Name == "" {
@@ -2267,12 +2267,12 @@ func TestCoverageFeaturesAndEnv(t *testing.T) {
 			return nil
 		}, nil
 	})
-	rt, err := NewRuntime(Config{
+	rt, err := NewVM(Config{
 		Source:   `export function read() { return featureValue + featureAdd(1, 2) + featureNS.x; }`,
 		Features: []Feature{feat},
 	})
 	if err != nil {
-		t.Fatalf("NewRuntime: %v", err)
+		t.Fatalf("NewVM: %v", err)
 	}
 	got, err := rt.Call(context.Background(), "read")
 	if err != nil || got.String() != "11" {
@@ -2287,15 +2287,15 @@ func TestCoverageFeaturesAndEnv(t *testing.T) {
 }
 
 func TestCoverageCloseErrors(t *testing.T) {
-	rt, err := NewRuntime(Config{
-		Source:         "1",
-		OnRuntimeClose: func(*Runtime) error { return errors.New("close boom") },
+	rt, err := NewVM(Config{
+		Source:    "1",
+		OnVMClose: func(*VM) error { return errors.New("close boom") },
 		Features: []Feature{FeatureFunc(func(*Env) (func() error, error) {
 			return func() error { return errors.New("cleanup boom") }, nil
 		})},
 	})
 	if err != nil {
-		t.Fatalf("NewRuntime: %v", err)
+		t.Fatalf("NewVM: %v", err)
 	}
 	err = rt.Close()
 	if err == nil || !strings.Contains(err.Error(), "close boom") || !strings.Contains(err.Error(), "cleanup boom") {
@@ -2311,7 +2311,7 @@ func TestCoveragePool(t *testing.T) {
 		t.Fatalf("acquire(canceled) = %v", err)
 	}
 	ex.pool.maxIdle = 0
-	if err := ex.Run(context.Background(), func(*Runtime) error { return nil }); err != nil {
+	if err := ex.Run(context.Background(), func(*VM) error { return nil }); err != nil {
 		t.Fatalf("Run with maxIdle 0: %v", err)
 	}
 	ex.pool.close()
@@ -2335,7 +2335,7 @@ func TestCoveragePool(t *testing.T) {
 }
 
 func TestCoverageScriptAndTypeScriptModes(t *testing.T) {
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Name:   "classic.js",
 		Mode:   ModeScript,
 		Source: `function twice(x) { return x * 2; } var answer = twice(21);`,
@@ -2347,7 +2347,7 @@ func TestCoverageScriptAndTypeScriptModes(t *testing.T) {
 		t.Fatalf("script Exports = %v", rt.Exports())
 	}
 
-	ts := covRuntime(t, Config{
+	ts := covVM(t, Config{
 		Name:       "typed.js",
 		TypeScript: true,
 		Source:     `export function twice(x: number): number { return x * 2; }`,
@@ -2356,7 +2356,7 @@ func TestCoverageScriptAndTypeScriptModes(t *testing.T) {
 		t.Fatalf("TypeScript twice = %v, %v", got, err)
 	}
 
-	mod := covRuntime(t, Config{
+	mod := covVM(t, Config{
 		Name:   "module.js",
 		Mode:   ModeModule,
 		Source: `export const n = 3; export function get() { return n; }`,
@@ -2370,7 +2370,7 @@ func TestCoverageParamConversions(t *testing.T) {
 	type point struct {
 		X int `json:"x"`
 	}
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Source: `export function ok() {
   return [host.map({ a: 1, b: 2 }), host.slice(["a", "b"]), host.ptr(3), host.any("x"), host.struct({ x: 4 })];
 }
@@ -2414,7 +2414,7 @@ func mustToGo(t *testing.T, v *Value) any {
 }
 
 func TestCoverageRejectionReasons(t *testing.T) {
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Source: `export function undef() { return Promise.reject(undefined); }
 export function nul() { return Promise.reject(null); }
 export function text() { return Promise.reject("boom"); }
@@ -2446,8 +2446,8 @@ export function named() { return Promise.reject(new RangeError("nope")); }`,
 	}
 }
 
-func TestCoverageRuntimeEdges(t *testing.T) {
-	rt := covRuntime(t, Config{Source: `export function id(x) { return x; }`})
+func TestCoverageVMEdges(t *testing.T) {
+	rt := covVM(t, Config{Source: `export function id(x) { return x; }`})
 	ctx := context.Background()
 	if _, err := rt.Call(ctx, "missing"); !errors.Is(err, ErrNotFunction) {
 		t.Fatalf("Call(missing) = %v", err)
@@ -2455,7 +2455,7 @@ func TestCoverageRuntimeEdges(t *testing.T) {
 	if _, err := rt.Call(ctx, "id", make(chan int)); err == nil {
 		t.Fatalf("unconvertible argument accepted")
 	}
-	other := covRuntime(t, Config{Source: "export function id(x) { return x; }"})
+	other := covVM(t, Config{Source: "export function id(x) { return x; }"})
 	foreign, _ := other.Get("id")
 	if _, err := rt.CallValue(ctx, foreign); err == nil {
 		t.Fatalf("CallValue(foreign) accepted")
@@ -2506,16 +2506,16 @@ func TestCoverageCompileTimeoutAndErrors(t *testing.T) {
 	if _, err := New(Config{Source: "1", CompileTimeout: time.Second}); err != nil {
 		t.Fatalf("CompileTimeout: %v", err)
 	}
-	if _, err := NewRuntime(Config{Source: "syntax error ("}); err == nil {
+	if _, err := NewVM(Config{Source: "syntax error ("}); err == nil {
 		t.Fatalf("bad source accepted")
 	}
-	if _, err := NewRuntime(Config{}); !errors.Is(err, ErrNoSource) {
+	if _, err := NewVM(Config{}); !errors.Is(err, ErrNoSource) {
 		t.Fatalf("empty config = %v", err)
 	}
 }
 
 func TestCoverageOnLoopPanic(t *testing.T) {
-	rt := covRuntime(t, Config{Source: "1"})
+	rt := covVM(t, Config{Source: "1"})
 	func() {
 		defer func() {
 			if recover() == nil {
@@ -2530,12 +2530,12 @@ func TestCoverageOnLoopPanic(t *testing.T) {
 }
 
 func TestCoverageInstallWebAssemblyErrors(t *testing.T) {
-	rt := covRuntime(t, Config{Source: "1"})
+	rt := covVM(t, Config{Source: "1"})
 	env := &Env{r: rt, cfg: rt.cfg}
-	if cleanup, err := installWebAssembly(env, WebAssemblyOptions{Disable: true}); err != nil || cleanup != nil {
+	if cleanup, err := installWebAssembly(env, WasmOptions{Disable: true}); err != nil || cleanup != nil {
 		t.Fatalf("disabled install returned cleanup=%v, err=%v", cleanup != nil, err)
 	}
-	if _, err := installWebAssembly(env, WebAssemblyOptions{MemoryLimitPages: 65537}); err == nil {
+	if _, err := installWebAssembly(env, WasmOptions{MemoryLimitPages: 65537}); err == nil {
 		t.Fatalf("oversized MemoryLimitPages accepted")
 	}
 }
@@ -2546,7 +2546,7 @@ func TestCoverageMiscBranches(t *testing.T) {
 		t.Fatalf("consoleFeature nil returned cleanup=%v, err=%v", cleanup != nil, err)
 	}
 
-	rt := covRuntime(t, Config{Source: `export function id(x) { return x; } export const obj = { n: 1 };`})
+	rt := covVM(t, Config{Source: `export function id(x) { return x; } export const obj = { n: 1 };`})
 	ctx := context.Background()
 	if _, err := rt.Eval(ctx, "1"); err != nil {
 		t.Fatalf("Eval: %v", err)
@@ -2575,7 +2575,7 @@ func TestCoverageMiscBranches(t *testing.T) {
 		t.Fatalf("Export: %v", err)
 	}
 	// Methods on a closed runtime.
-	closed := covRuntime(t, Config{Source: "export const x = 1;"})
+	closed := covVM(t, Config{Source: "export const x = 1;"})
 	v, _ := closed.Get("x")
 	if err := closed.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -2597,9 +2597,9 @@ func TestCoverageMiscBranches(t *testing.T) {
 	}
 
 	// A pool with an invalid size still gets one slot.
-	pool := newRuntimePool(Config{}, rt.prog)
+	pool := newVMPool(Config{}, rt.prog)
 	if cap(pool.sem) != 1 {
-		t.Fatalf("newRuntimePool size = %d", cap(pool.sem))
+		t.Fatalf("newVMPool size = %d", cap(pool.sem))
 	}
 	pool.close()
 
@@ -2625,7 +2625,7 @@ func TestCoverageMiscBranches(t *testing.T) {
 	}
 
 	// fromGo rejects a foreign engine function value.
-	other := covRuntime(t, Config{Source: "export function id(x) { return x; }"})
+	other := covVM(t, Config{Source: "export function id(x) { return x; }"})
 	foreignFn, _ := other.Get("id")
 	if _, err := rt.fromGo(foreignFn.Raw()); err == nil {
 		t.Fatalf("fromGo(foreign function) accepted")
@@ -2643,7 +2643,7 @@ func TestCoverageMiscBranches(t *testing.T) {
 	}
 
 	// HostFS with a missing root fails to install.
-	if _, err := NewRuntime(Config{
+	if _, err := NewVM(Config{
 		Source: "1",
 		FS:     &HostFS{Root: filepath.Join(t.TempDir(), "missing")},
 	}); err == nil {
@@ -2664,7 +2664,7 @@ func TestCoverageExecutorErrorPaths(t *testing.T) {
 		t.Fatalf("EvalInto(bad source) accepted")
 	}
 
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Source: `const v = await Promise.resolve(3);
 export function get() { return v; }`,
 	})
@@ -2675,7 +2675,7 @@ export function get() { return v; }`,
 
 func TestCoverageUnhandledRejectionCallback(t *testing.T) {
 	seen := make(chan *JSError, 1)
-	rt := covRuntime(t, Config{
+	rt := covVM(t, Config{
 		Source: `export function fire() { Promise.reject(new Error("unhandled")); return 1; }`,
 		OnUnhandledRejection: func(err *JSError) {
 			select {
@@ -2698,7 +2698,7 @@ func TestCoverageUnhandledRejectionCallback(t *testing.T) {
 }
 
 func TestCoverageFromGoEdges(t *testing.T) {
-	rt := covRuntime(t, Config{Source: "1"})
+	rt := covVM(t, Config{Source: "1"})
 	var nf moejs.NativeFunc = func(*moejs.Realm, moejs.Value, []moejs.Value) (moejs.Value, error) {
 		return moejs.Undefined(), nil
 	}

@@ -76,7 +76,7 @@
 //	var body Request
 //	err = exec.CallInto(ctx, "buildRequest", []any{task}, &body)
 //
-// A Runtime leases one runtime. Its Value and Function handles stay valid
+// A VM leases one runtime. Its Value and Function handles stay valid
 // until Close; use Get, Func and Value.Call when the Go side drives several
 // calls against the same JavaScript state.
 //
@@ -136,16 +136,16 @@
 // # Concurrency and lifetime
 //
 // An Executor is safe for concurrent use. Its PoolSize bounds how many
-// runtimes run JavaScript at once; each call takes an idle runtime or creates
-// one. A Runtime is not safe for concurrent use: it owns one moejs runtime,
+// VMs run JavaScript at once; each call takes an idle VM or creates
+// one. A VM is not safe for concurrent use: it owns one moejs runtime,
 // which must be used from one goroutine at a time. Interrupting a call is
 // safe through its context.
 //
-// Runtimes are reused by default. JavaScript state (globals the program
+// VMs are reused by default. JavaScript state (globals the program
 // writes, module-level variables) therefore persists between calls that
-// happen to land on the same runtime. Set Config.NoReuse to create a fresh
-// runtime for every call, or set MaxIdle to a lower number to keep fewer
-// idle runtimes. A runtime is discarded after an interrupt, an internal
+// happen to land on the same VM. Set Config.NoReuse to create a fresh
+// VM for every call, or set MaxIdle to a lower number to keep fewer
+// idle VMs. A VM is discarded after an interrupt, an internal
 // error or a context cancellation, because timers and promises may still be
 // pending in it.
 //
@@ -203,7 +203,7 @@ func (m SourceMode) String() string {
 // moejs's DecodeOptions.
 type DecodeOptions = moejs.DecodeOptions
 
-// Config describes one JavaScript program and the runtimes that execute it.
+// Config describes one JavaScript program and the VMs that execute it.
 //
 // The zero value is usable as long as Source or SourceFile is set: the program
 // is an ES module, the event loop is installed with timers, there is no file
@@ -238,10 +238,10 @@ type Config struct {
 	// Locale is the default locale of Intl and toLocaleString, a BCP 47 tag
 	// such as "de-DE". Empty means the engine's default ("en-US").
 	Locale string
-	// MemoryLimit caps what one runtime's JavaScript may retain and
+	// MemoryLimit caps what one VM's JavaScript may retain and
 	// allocate, in bytes. Zero means no limit.
 	MemoryLimit int64
-	// MutableIntrinsics gives every runtime its own mutable copy of the
+	// MutableIntrinsics gives every VM its own mutable copy of the
 	// builtins. By default they are shared, frozen and read-only.
 	MutableIntrinsics bool
 	// MaxDynamicSource is the maximum length in bytes of source text that
@@ -285,7 +285,7 @@ type Config struct {
 	// OnWake is called when the loop wakes. A non-nil error stops the loop.
 	OnWake func() error
 	// OnUnhandledRejection is called when a promise is rejected with no
-	// handler by the time a call ends. The callback runs on the runtime's
+	// handler by the time a call ends. The callback runs on the VM's
 	// goroutine, outside any JavaScript call.
 	OnUnhandledRejection func(*JSError)
 
@@ -308,7 +308,7 @@ type Config struct {
 	// for GOARCH=wasm) or this option is disabled. The WASI host module is
 	// loaded and its per-guest environment is taken from WebAssembly.WASI.
 	// See WebAssemblySupported.
-	WebAssembly WebAssemblyOptions
+	WebAssembly WasmOptions
 
 	// ------------------------------------------------------------------
 	// Modules and imports
@@ -366,16 +366,16 @@ type Config struct {
 	// ------------------------------------------------------------------
 	// Hooks
 
-	// OnRuntimeReady runs after a new runtime has loaded the program and
-	// installed its features. It runs on the runtime's goroutine, before the
-	// runtime is used. Returning an error closes the runtime.
-	OnRuntimeReady func(*Runtime) error
-	// OnRuntimeClose runs before a runtime is closed, after JavaScript has
+	// OnVMReady runs after a new VM has loaded the program and
+	// installed its features. It runs on the VM's goroutine, before the
+	// VM is used. Returning an error closes the VM.
+	OnVMReady func(*VM) error
+	// OnVMClose runs before a VM is closed, after JavaScript has
 	// stopped.
-	OnRuntimeClose func(*Runtime) error
+	OnVMClose func(*VM) error
 }
 
-// WebAssemblyOptions configures the WebAssembly JavaScript API.
+// WasmOptions configures the WebAssembly JavaScript API.
 //
 // The API is compiled into the binary by default. Build with the "nowasm" tag
 // to leave it out:
@@ -389,7 +389,7 @@ type Config struct {
 //
 // Without the API the WebAssembly global is not installed.
 // WebAssemblySupported reports whether it is in the binary.
-type WebAssemblyOptions struct {
+type WasmOptions struct {
 	// Disable leaves the WebAssembly global uninstalled even in a build that
 	// includes it. It is ignored without the API.
 	Disable bool
@@ -398,10 +398,10 @@ type WebAssemblyOptions struct {
 	MemoryLimitPages uint32
 	// WASI configures the wasi_snapshot_preview1 host module and the
 	// environment attached to each guest that imports it.
-	WASI WebAssemblyWASIOptions
+	WASI WasiOptions
 }
 
-// WebAssemblyWASIOptions configures WASI support. When the WebAssembly API is
+// WasiOptions configures WASI support. When the WebAssembly API is
 // compiled in, the wasi_snapshot_preview1 host module is always instantiated
 // so WASI-targeting modules load without the caller supplying WASI imports;
 // set Disable to turn that off.
@@ -410,7 +410,7 @@ type WebAssemblyOptions struct {
 // imports wasi_snapshot_preview1. Defaults are deliberately sandboxed: no
 // arguments, no environment, no host file system, no stdio, and wazero's
 // deterministic random_get source.
-type WebAssemblyWASIOptions struct {
+type WasiOptions struct {
 	// Disable leaves the WASI host module unloaded. A module that imports
 	// wasi_snapshot_preview1 then needs the caller to supply those imports.
 	Disable bool
@@ -433,7 +433,7 @@ type WebAssemblyWASIOptions struct {
 
 // configured reports whether the caller asked for any WASI behavior. Disable
 // on its own is not counted: without the API WASI is absent anyway.
-func (o WebAssemblyWASIOptions) configured() bool {
+func (o WasiOptions) configured() bool {
 	return len(o.Args) > 0 || len(o.Env) > 0 || o.FS != nil ||
 		o.Stdin != nil || o.Stdout != nil || o.Stderr != nil ||
 		o.Rand != nil || o.RunStart

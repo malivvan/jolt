@@ -35,13 +35,13 @@ const (
 // wasmState is one installation: it owns the wazero runtime and the JS
 // constructors and prototypes of the WebAssembly global.
 type wasmState struct {
-	rt               *Runtime
+	rt               *VM
 	env              *Env
 	wr               wazero.Runtime
 	realm            *engine.Realm
 	count            uint64
 	memoryLimitPages uint32
-	wasi             WebAssemblyWASIOptions
+	wasi             WasiOptions
 	wasiEnabled      bool
 
 	moduleClass   *wasmClass
@@ -79,7 +79,7 @@ type wasmInstance struct {
 // WebAssembly global. The WASI host module is loaded unless the caller opts
 // out; it does not run the conventional "_start" export unless the caller asks
 // for it. The environment defaults to empty and sandboxed.
-func installWebAssembly(env *Env, opts WebAssemblyOptions) (func() error, error) {
+func installWebAssembly(env *Env, opts WasmOptions) (func() error, error) {
 	if opts.Disable {
 		return nil, nil
 	}
@@ -100,7 +100,7 @@ func installWebAssembly(env *Env, opts WebAssemblyOptions) (func() error, error)
 		WithCustomSections(true)
 	wr := wazero.NewRuntimeWithConfig(ctx, cfg)
 	s := &wasmState{
-		rt: env.Runtime(), env: env, wr: wr, realm: env.Raw().Realm(),
+		rt: env.VM(), env: env, wr: wr, realm: env.Raw().Realm(),
 		memoryLimitPages: pages,
 		wasi:             opts.WASI,
 		wasiEnabled:      !opts.WASI.Disable,

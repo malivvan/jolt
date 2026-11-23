@@ -22,7 +22,7 @@ jolt turns moejs's low-level engine API into a small, ergonomic library:
   own), the network (`HostNetwork`, `NoNetwork`, your own), and any other
   `Feature`.
 - **Run it concurrently** — `Executor` compiles the program once and serves
-  calls from a bounded pool of runtimes.
+  calls from a bounded pool of VMs.
 
 ```go
 package main
@@ -95,7 +95,7 @@ A parameter may be:
 | Go type | Receives |
 | --- | --- |
 | `context.Context` | the context of the running call (first parameter or any position) |
-| `*jolt.Runtime` | the runtime, for callbacks during the call |
+| `*jolt.VM` | the VM, for callbacks during the call |
 | `*moejs.Realm` | the engine realm |
 | `moejs.Value` | the raw JavaScript value |
 | `*jolt.Value` | a jolt value handle |
@@ -117,7 +117,7 @@ error. A variadic `func` parameter type is rejected.
 
 Variadic parameters work. A Go panic is recovered and thrown as a JavaScript
 `Error` (and exposed to Go as `*jolt.PanicError`). Named functions from
-different runtimes are rejected, as moejs requires.
+different VMs are rejected, as moejs requires.
 
 ### Values and namespaces
 
@@ -139,7 +139,7 @@ rt.Set("host.timeout", 30*time.Second)
 rt.SetPath("host.limits.maxBytes", 1<<20)
 ```
 
-`Config.Globals` and `Config.Functions` do the same for every runtime at
+`Config.Globals` and `Config.Functions` do the same for every VM at
 creation, before the program is loaded.
 
 ## Accessing JavaScript from Go
@@ -156,7 +156,7 @@ err = exec.CallInto(ctx, "buildRequest", &req, task)
 ```
 
 Unless `Config.DisableAwaitPromises` is set, a returned promise is awaited on
-the runtime's event loop. A rejection becomes a `*jolt.JSError`; a
+the VM's event loop. A rejection becomes a `*jolt.JSError`; a
 synchronous `throw` remains a `*jolt.Exception` (an alias for
 `moejs.Exception`).
 
@@ -166,10 +166,10 @@ program that never goes idle.
 
 ### Values and functions
 
-For several calls against one JavaScript state, lease a runtime:
+For several calls against one JavaScript state, lease a VM:
 
 ```go
-err := exec.Run(ctx, func(rt *jolt.Runtime) error {
+err := exec.Run(ctx, func(rt *jolt.VM) error {
 	// Module export or global.
 	config, err := rt.Get("config")
 	if err != nil {
@@ -215,7 +215,7 @@ or `SourceFile` is set.
 | Exposure | `Globals`, `Functions`, `Console`, `DisableConsole` |
 | WebAssembly | `WebAssembly` (`Disable`, `MemoryLimitPages`, `WASI`: `Disable`, `Args`, `Env`, `FS`, `Stdin`, `Stdout`, `Stderr`, `Rand`, `RunStart`); on by default, opt out with `-tags nowasm` |
 | Pool | `PoolSize`, `MaxIdle`, `NoReuse` |
-| Hooks | `OnRuntimeReady`, `OnRuntimeClose` |
+| Hooks | `OnVMReady`, `OnVMClose` |
 
 Defaults:
 
@@ -232,7 +232,7 @@ Defaults:
 
 ## Composable runtimes
 
-A runtime is assembled from `Feature`s:
+A VM is assembled from `Feature`s:
 
 ```go
 type Feature interface {
@@ -240,7 +240,7 @@ type Feature interface {
 }
 ```
 
-`Env` exposes the runtime, its event loop and the same helpers as `Runtime`.
+`Env` exposes the VM, its event loop and the same helper methods.
 A feature can install globals, modules or policies. `Config.FS` and
 `Config.Network` are just features:
 
@@ -355,8 +355,8 @@ Each guest that imports WASI gets its environment from the Go config:
 
 ```go
 exec, err := jolt.New(jolt.Config{
-	WebAssembly: jolt.WebAssemblyOptions{
-		WASI: jolt.WebAssemblyWASIOptions{
+	WebAssembly: jolt.WasmOptions{
+		WASI: jolt.WasiOptions{
 			Args:   []string{"app", "--flag"},
 			Env:    map[string]string{"MODE": "prod"},
 			FS:     os.DirFS("/srv/app"),
@@ -407,15 +407,15 @@ directory; the file system a *script* sees is still controlled by `FS`.
 ## Concurrency and lifetime
 
 `Executor` is safe for concurrent use. Each `Call`, `CallInto` or `Run` leases
-one runtime; `PoolSize` bounds how many run together.
+one VM; `PoolSize` bounds how many run together.
 
-`Runtime` is not safe for concurrent use: moejs requires one goroutine at a
+`VM` is not safe for concurrent use: moejs requires one goroutine at a
 time. Cancelling the context passed to a call is safe from another goroutine:
 it interrupts the loop and the call returns `*jolt.InterruptedError`.
 
-Runtime state persists between calls that use the same pooled runtime. Set
-`NoReuse` for a fresh runtime per call, or use `NewRuntime` when the program is
-a long-lived state machine. A runtime is discarded after an interrupt,
+VM state persists between calls that use the same pooled VM. Set
+`NoReuse` for a fresh VM per call, or use `NewVM` when the program is
+a long-lived state machine. A VM is discarded after an interrupt,
 timeout, memory-limit hit or internal error, because timers and promises may
 still be pending in it.
 

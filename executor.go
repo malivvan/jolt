@@ -7,19 +7,19 @@ import (
 	"sync/atomic"
 )
 
-// Executor compiles a program once and runs it in a pool of runtimes. It is
-// safe for concurrent use. Call and Eval take an idle runtime or create one,
+// Executor compiles a program once and runs it in a pool of VMs. It is
+// safe for concurrent use. Call and Eval take an idle VM or create one,
 // up to Config.PoolSize.
 type Executor struct {
 	cfg  Config
 	prog *program
-	pool *runtimePool
+	pool *vmPool
 
 	closed atomic.Bool
 }
 
 // New compiles cfg's program and returns an executor. The program and its
-// imports are compiled and linked once; runtimes are created lazily.
+// imports are compiled and linked once; VMs are created lazily.
 func New(cfg Config) (*Executor, error) {
 	defaults, err := cfg.withDefaults()
 	if err != nil {
@@ -32,14 +32,14 @@ func New(cfg Config) (*Executor, error) {
 	return &Executor{
 		cfg:  defaults,
 		prog: prog,
-		pool: newRuntimePool(defaults, prog),
+		pool: newVMPool(defaults, prog),
 	}, nil
 }
 
-// NewRuntime compiles cfg's program and creates one initialized runtime. The
+// NewVM compiles cfg's program and creates one initialized runtime. The
 // caller owns it and must Close it. Use New when several goroutines call the
 // same program.
-func NewRuntime(cfg Config) (*Runtime, error) {
+func NewVM(cfg Config) (*VM, error) {
 	defaults, err := cfg.withDefaults()
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func NewRuntime(cfg Config) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	return prog.newRuntime()
+	return prog.newVM()
 }
 
 // Config returns the executor's configuration.
@@ -59,7 +59,7 @@ func (e *Executor) Config() Config { return e.cfg }
 // Config.DisableAwaitPromises is set.
 func (e *Executor) Call(ctx context.Context, path string, args ...any) (any, error) {
 	var out any
-	err := e.Run(ctx, func(rt *Runtime) error {
+	err := e.Run(ctx, func(rt *VM) error {
 		v, err := rt.Call(ctx, path, args...)
 		if err != nil {
 			return err
@@ -72,7 +72,7 @@ func (e *Executor) Call(ctx context.Context, path string, args ...any) (any, err
 
 // CallInto calls path and decodes the result into out, a non-nil pointer.
 func (e *Executor) CallInto(ctx context.Context, path string, out any, args ...any) error {
-	return e.Run(ctx, func(rt *Runtime) error {
+	return e.Run(ctx, func(rt *VM) error {
 		return rt.CallInto(ctx, path, out, args...)
 	})
 }
@@ -81,7 +81,7 @@ func (e *Executor) CallInto(ctx context.Context, path string, out any, args ...a
 // completion value to a Go value.
 func (e *Executor) Eval(ctx context.Context, source string) (any, error) {
 	var out any
-	err := e.Run(ctx, func(rt *Runtime) error {
+	err := e.Run(ctx, func(rt *VM) error {
 		v, err := rt.Eval(ctx, source)
 		if err != nil {
 			return err
@@ -94,7 +94,7 @@ func (e *Executor) Eval(ctx context.Context, source string) (any, error) {
 
 // EvalInto evaluates source and decodes its completion value into out.
 func (e *Executor) EvalInto(ctx context.Context, source string, out any) error {
-	return e.Run(ctx, func(rt *Runtime) error {
+	return e.Run(ctx, func(rt *VM) error {
 		return rt.EvalInto(ctx, source, out)
 	})
 }
@@ -102,7 +102,7 @@ func (e *Executor) EvalInto(ctx context.Context, source string, out any) error {
 // Get resolves a dotted path and converts the value to Go.
 func (e *Executor) Get(ctx context.Context, path string) (any, error) {
 	var out any
-	err := e.Run(ctx, func(rt *Runtime) error {
+	err := e.Run(ctx, func(rt *VM) error {
 		v, err := rt.Get(path)
 		if err != nil {
 			return err
@@ -115,7 +115,7 @@ func (e *Executor) Get(ctx context.Context, path string) (any, error) {
 
 // GetInto resolves a dotted path and decodes the value into out.
 func (e *Executor) GetInto(ctx context.Context, path string, out any) error {
-	return e.Run(ctx, func(rt *Runtime) error {
+	return e.Run(ctx, func(rt *VM) error {
 		v, err := rt.Get(path)
 		if err != nil {
 			return err
@@ -124,10 +124,10 @@ func (e *Executor) GetInto(ctx context.Context, path string, out any) error {
 	})
 }
 
-// Run leases one runtime for the duration of fn. The Runtime and its Value
-// handles are valid only inside fn. A panic in fn propagates after the runtime
+// Run leases one VM for the duration of fn. The VM and its Value
+// handles are valid only inside fn. A panic in fn propagates after the VM
 // is returned or closed.
-func (e *Executor) Run(ctx context.Context, fn func(*Runtime) error) error {
+func (e *Executor) Run(ctx context.Context, fn func(*VM) error) error {
 	if e.closed.Load() {
 		return ErrClosed
 	}
@@ -150,8 +150,8 @@ func (e *Executor) Run(ctx context.Context, fn func(*Runtime) error) error {
 	return fn(rt)
 }
 
-// Close closes the executor and the idle runtimes. Calls already running keep
-// their runtime; it is closed when they release it. Close is idempotent.
+// Close closes the executor and the idle VMs. Calls already running keep
+// their VM; it is closed when they release it. Close is idempotent.
 func (e *Executor) Close() error {
 	if e == nil {
 		return nil
@@ -163,29 +163,29 @@ func (e *Executor) Close() error {
 	return nil
 }
 
-// runtimePool bounds concurrency and keeps idle runtimes.
-type runtimePool struct {
+// vmPool bounds concurrency and keeps idle VMs.
+type vmPool struct {
 	prog    *program
 	sem     chan struct{}
 	maxIdle int
 	mu      sync.Mutex
-	idle    []*Runtime
+	idle    []*VM
 	closed  bool
 }
 
-func newRuntimePool(cfg Config, prog *program) *runtimePool {
+func newVMPool(cfg Config, prog *program) *vmPool {
 	size := cfg.PoolSize
 	if size < 1 {
 		size = 1
 	}
-	return &runtimePool{
+	return &vmPool{
 		prog:    prog,
 		sem:     make(chan struct{}, size),
 		maxIdle: cfg.MaxIdle,
 	}
 }
 
-func (p *runtimePool) acquire(ctx context.Context) (*Runtime, error) {
+func (p *vmPool) acquire(ctx context.Context) (*VM, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (p *runtimePool) acquire(ctx context.Context) (*Runtime, error) {
 	}
 	p.mu.Unlock()
 
-	rt, err := p.prog.newRuntime()
+	rt, err := p.prog.newVM()
 	if err != nil {
 		<-p.sem
 		return nil, err
@@ -217,7 +217,7 @@ func (p *runtimePool) acquire(ctx context.Context) (*Runtime, error) {
 	return rt, nil
 }
 
-func (p *runtimePool) release(rt *Runtime, reuse bool) {
+func (p *vmPool) release(rt *VM, reuse bool) {
 	p.mu.Lock()
 	if reuse && !p.closed && p.maxIdle > 0 && len(p.idle) < p.maxIdle {
 		p.idle = append(p.idle, rt)
@@ -230,7 +230,7 @@ func (p *runtimePool) release(rt *Runtime, reuse bool) {
 	<-p.sem
 }
 
-func (p *runtimePool) close() {
+func (p *vmPool) close() {
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()

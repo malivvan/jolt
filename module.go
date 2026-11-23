@@ -298,7 +298,7 @@ func (p *program) resolve(referrer moejs.Referrer, specifier string) (*moejs.Mod
 	return p.compileModule(src.Name, src.Source, src.TypeScript)
 }
 
-// program is a compiled source graph plus the features that every runtime
+// program is a compiled source graph plus the features that every VM
 // installs. It is immutable after construction.
 type program struct {
 	cfg         Config
@@ -422,8 +422,8 @@ func compileScript(name, source string, ts bool, timeout time.Duration) (*moejs.
 	return s, nil
 }
 
-// newRuntime creates one initialized runtime.
-func (p *program) newRuntime() (*Runtime, error) {
+// newVM creates one initialized runtime.
+func (p *program) newVM() (*VM, error) {
 	cfg := p.cfg
 	raw := moejs.NewRuntime(moejs.Options{
 		MutableIntrinsics:  cfg.MutableIntrinsics,
@@ -444,7 +444,7 @@ func (p *program) newRuntime() (*Runtime, error) {
 		return nil, wrap("init", p.entryName, err)
 	}
 
-	r := &Runtime{prog: p, cfg: cfg, raw: raw, loop: loop}
+	r := &VM{prog: p, cfg: cfg, raw: raw, loop: loop}
 	if cfg.OnUnhandledRejection != nil {
 		raw.SetPromiseRejectionTracker(func(v moejs.Value, op moejs.PromiseRejectionOperation) {
 			if op != moejs.PromiseRejectionReject {
@@ -520,8 +520,8 @@ func (p *program) newRuntime() (*Runtime, error) {
 		}
 	}
 
-	if cfg.OnRuntimeReady != nil {
-		if err := cfg.OnRuntimeReady(r); err != nil {
+	if cfg.OnVMReady != nil {
+		if err := cfg.OnVMReady(r); err != nil {
 			r.abort()
 			return nil, err
 		}
@@ -529,9 +529,9 @@ func (p *program) newRuntime() (*Runtime, error) {
 	return r, nil
 }
 
-// abort releases a runtime that failed to initialize. It skips the user's
-// OnRuntimeClose hook, which is only for runtimes that were handed out.
-func (r *Runtime) abort() {
+// abort releases a VM that failed to initialize. It skips the user's
+// OnVMClose hook, which is only for VMs that were handed out.
+func (r *VM) abort() {
 	for i := len(r.cleanups) - 1; i >= 0; i-- {
 		_ = r.cleanups[i]()
 	}

@@ -31,8 +31,8 @@ func main() {
 	exec, err := jolt.New(jolt.Config{
 		Name:   "hello-wasi.js",
 		Source: source,
-		WebAssembly: jolt.WebAssemblyOptions{
-			WASI: jolt.WebAssemblyWASIOptions{
+		WebAssembly: jolt.WasmOptions{
+			WASI: jolt.WasiOptions{
 				Stdout:   os.Stdout,
 				RunStart: true,
 			},

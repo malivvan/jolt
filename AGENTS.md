@@ -8,7 +8,7 @@ API backed by wazero.
 
 - Go module: `github.com/malivvan/jolt`. The package is named `jolt`.
 - Entry points: `jolt.New(Config)` returns an `*Executor` (compiled once,
-  pooled runtimes); `jolt.NewRuntime(Config)` returns one owned `*Runtime`.
+  pooled VMs); `jolt.NewVM(Config)` returns one owned `*VM`.
 - Manifest: `go.mod` (Go 1.25). README is the user-facing guide; `doc.go`
   holds the package docs; `LICENSE` is MIT.
 - WebAssembly is part of the default build. `-tags nowasm` removes it.
@@ -44,12 +44,12 @@ the demos smoke test, a 90% coverage gate, and staticcheck.
 
 | File(s) | Role |
 | --- | --- |
-| `config.go` | `Config`, defaults/validation, `WebAssemblyOptions` and WASI options |
-| `executor.go` | `Executor`, program compilation, bounded runtime pool (`New`, `Call`, `Eval`, `Get`) |
-| `runtime.go` | `Runtime`: one moejs runtime, event loop, calling/eval, exports |
+| `jolt.go` | package docs, `Config` and defaults/validation, console, `WasmOptions` and `WasiOptions` |
+| `executor.go` | `Executor`, program compilation, bounded VM pool (`New`, `Call`, `Eval`, `Get`) |
+| `vm.go` | `VM`: one moejs runtime, event loop, calling/eval, exports |
 | `features.go` | `Feature`/`FeatureFunc`, `Env`, install and cleanup ordering |
 | `funcs.go`, `value.go` | Go↔JS value conversion, host functions, JS handles |
-| `fs.go`, `modules.go`, `console.go` | `HostFS`/`NoFS`, module resolution/loaders, console |
+| `fs.go`, `module.go` | `HostFS`/`NoFS`, module resolution/loaders |
 | `errors.go` | `*Error`, `JSError`, `IsTimeout`, `IsException`, `JSStack` helpers |
 | `wasm.go` | WebAssembly JS API on wazero, WASI host module, module binary parser |
 | `wasm_values.go` | Memory/global/table bridging, value encoding, export building |
@@ -63,7 +63,7 @@ the demos smoke test, a 90% coverage gate, and staticcheck.
   `GOOS=js GOARCH=wasm` target, not the old package name: the guard excludes
   the wazero backend when cross-compiling for the browser/Node target.
 - `wasm_off.go` uses the complement, `//go:build nowasm || (js && wasm)`.
-- `WebAssemblyOptions` and `WebAssemblyWASIOptions` live in `config.go`
+- `WasmOptions` and `WasiOptions` live in `jolt.go`
   (untagged) because `Config` and the disabled stub reference them in both
   modes. Do not move them behind the wasm tag.
 - Never introduce a `wasm` build tag for the feature: `wasm` is reserved by
