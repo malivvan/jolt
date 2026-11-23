@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -21,7 +21,7 @@ import (
 // ModuleSource is one module's source, returned by a ModuleLoader.
 type ModuleSource struct {
 	// Name is the module's canonical name, used in stack traces and as the
-	// referrer for its own imports. Empty lets js use the resolved path.
+	// referrer for its own imports. Empty lets jolt use the resolved path.
 	Name       string
 	Source     string
 	TypeScript bool
@@ -109,7 +109,7 @@ func (l *FSLoader) Load(referrer, specifier string) (ModuleSource, error) {
 			return ModuleSource{Name: name, Source: string(data), TypeScript: isTypeScriptName(name)}, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return ModuleSource{}, fmt.Errorf("js: read module %q: %w", p, err)
+			return ModuleSource{}, fmt.Errorf("jolt: read module %q: %w", p, err)
 		}
 	}
 	return ModuleSource{}, fmt.Errorf("%w: %q (imported from %q)", ErrModuleNotFound, specifier, referrer)
@@ -139,12 +139,12 @@ func (l hostLoader) Load(referrer, specifier string) (ModuleSource, error) {
 				readErr = closeErr
 			}
 			if readErr != nil {
-				return ModuleSource{}, fmt.Errorf("js: read module %q: %w", name, readErr)
+				return ModuleSource{}, fmt.Errorf("jolt: read module %q: %w", name, readErr)
 			}
 			return ModuleSource{Name: name, Source: string(data), TypeScript: isTypeScriptName(name)}, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return ModuleSource{}, fmt.Errorf("js: read module %q: %w", name, err)
+			return ModuleSource{}, fmt.Errorf("jolt: read module %q: %w", name, err)
 		}
 	}
 	return ModuleSource{}, fmt.Errorf("%w: %q (imported from %q)", ErrModuleNotFound, specifier, referrer)
@@ -403,7 +403,7 @@ func (p *program) entrySource() (string, error) {
 	}
 	data, err := os.ReadFile(p.cfg.SourceFile)
 	if err != nil {
-		return "", fmt.Errorf("js: read source file %q: %w", p.cfg.SourceFile, err)
+		return "", fmt.Errorf("jolt: read source file %q: %w", p.cfg.SourceFile, err)
 	}
 	return string(data), nil
 }

@@ -1,6 +1,6 @@
 //go:build !nowasm && !(js && wasm)
 
-package js
+package jolt
 
 import (
 	"context"

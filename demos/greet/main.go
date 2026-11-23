@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/malivvan/js"
+	"github.com/malivvan/jolt"
 )
 
 func main() {
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name: "greet.js",
 		Source: `
 export function greet(name) {

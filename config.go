@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"fmt"
@@ -55,7 +55,7 @@ type Config struct {
 	// Program source
 
 	// Name is the program's name in errors and stack traces. Empty means the
-	// base name of SourceFile, or "js.js".
+	// base name of SourceFile, or "jolt.js".
 	Name string
 	// Source is the JavaScript or TypeScript source. It and SourceFile are
 	// mutually exclusive.
@@ -143,7 +143,7 @@ type Config struct {
 	// precedence if it implements ImporterProvider/ResolverProvider.
 	Features []Feature
 	// WebAssembly configures the WebAssembly JavaScript API. The API is
-	// installed by default, unless js is built with the "nowasm" tag (or
+	// installed by default, unless jolt is built with the "nowasm" tag (or
 	// for GOARCH=wasm) or this option is disabled. The WASI host module is
 	// loaded and its per-guest environment is taken from WebAssembly.WASI.
 	// See WebAssemblySupported.
@@ -169,7 +169,7 @@ type Config struct {
 	// may return ErrModuleNotFound to fall through.
 	Resolve moejs.Resolver
 	// Importer replaces the importer used for import() and import.meta.
-	// Normally js builds one from the resolver and the features.
+	// Normally jolt builds one from the resolver and the features.
 	Importer *moejs.Importer
 
 	// ------------------------------------------------------------------
@@ -282,22 +282,22 @@ func (o WebAssemblyWASIOptions) configured() bool {
 // defaults and the selected features in install order.
 func (c Config) withDefaults() (Config, error) {
 	if c.Source != "" && c.SourceFile != "" {
-		return Config{}, fmt.Errorf("js: Config.Source and Config.SourceFile are both set")
+		return Config{}, fmt.Errorf("jolt: Config.Source and Config.SourceFile are both set")
 	}
 	if c.Source == "" && c.SourceFile == "" {
 		return Config{}, ErrNoSource
 	}
 	if c.Mode < ModeAuto || c.Mode > ModeScript {
-		return Config{}, fmt.Errorf("js: invalid Config.Mode %d", c.Mode)
+		return Config{}, fmt.Errorf("jolt: invalid Config.Mode %d", c.Mode)
 	}
 	if c.MemoryLimit < 0 {
-		return Config{}, fmt.Errorf("js: Config.MemoryLimit is negative")
+		return Config{}, fmt.Errorf("jolt: Config.MemoryLimit is negative")
 	}
 	if c.PoolSize < 0 {
-		return Config{}, fmt.Errorf("js: Config.PoolSize is negative")
+		return Config{}, fmt.Errorf("jolt: Config.PoolSize is negative")
 	}
 	if c.MaxIdle < 0 {
-		return Config{}, fmt.Errorf("js: Config.MaxIdle is negative")
+		return Config{}, fmt.Errorf("jolt: Config.MaxIdle is negative")
 	}
 	if c.PoolSize == 0 {
 		c.PoolSize = runtime.GOMAXPROCS(0)
@@ -312,14 +312,14 @@ func (c Config) withDefaults() (Config, error) {
 		c.MaxIdle = c.PoolSize
 	}
 	if c.WebAssembly.MemoryLimitPages > 65536 {
-		return Config{}, fmt.Errorf("js: WebAssembly.MemoryLimitPages %d exceeds the 65536-page (4 GiB) limit",
+		return Config{}, fmt.Errorf("jolt: WebAssembly.MemoryLimitPages %d exceeds the 65536-page (4 GiB) limit",
 			c.WebAssembly.MemoryLimitPages)
 	}
 	if c.Name == "" {
 		if c.SourceFile != "" {
 			c.Name = baseName(c.SourceFile)
 		} else {
-			c.Name = "js.js"
+			c.Name = "jolt.js"
 		}
 	}
 	c.Modules = cloneStringMap(c.Modules)

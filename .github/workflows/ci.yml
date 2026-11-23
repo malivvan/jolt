@@ -109,9 +109,9 @@ jobs:
 
       - name: Run examples
         run: |
-          test "$(go run ./examples/greet)" = "hello world!"
-          test "$(go run ./examples/sandbox)" = "42"
-          out=$(go run ./examples/webassembly)
+          test "$(go run ./demos/greet)" = "hello world!"
+          test "$(go run ./demos/sandbox)" = "42"
+          out=$(go run ./demos/webassembly)
           echo "$out"
           echo "$out" | grep -qx "hello from wasm"
           echo "$out" | grep -qx "ok"

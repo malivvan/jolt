@@ -1,4 +1,4 @@
-package js_test
+package jolt_test
 
 import (
 	"bytes"
@@ -16,12 +16,12 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/malivvan/js"
+	"github.com/malivvan/jolt"
 )
 
-func newExec(t *testing.T, cfg js.Config) *js.Executor {
+func newExec(t *testing.T, cfg jolt.Config) *jolt.Executor {
 	t.Helper()
-	ex, err := js.New(cfg)
+	ex, err := jolt.New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -33,9 +33,9 @@ func newExec(t *testing.T, cfg js.Config) *js.Executor {
 	return ex
 }
 
-func newRuntime(t *testing.T, cfg js.Config) *js.Runtime {
+func newRuntime(t *testing.T, cfg jolt.Config) *jolt.Runtime {
 	t.Helper()
-	rt, err := js.NewRuntime(cfg)
+	rt, err := jolt.NewRuntime(cfg)
 	if err != nil {
 		t.Fatalf("NewRuntime: %v", err)
 	}
@@ -58,7 +58,7 @@ type built struct {
 }
 
 func TestExposeGlobalsAndCall(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "greet.js",
 		Source: `
 export function greet(name) {
@@ -82,7 +82,7 @@ export function greet(name) {
 }
 
 func TestCallIntoStruct(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "build.js",
 		Source: `
 export function build(task) {
@@ -126,7 +126,7 @@ func TestGoFunctionSignatures(t *testing.T) {
 		},
 	}
 
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "host.js",
 		Source: `
 export function calc() { return host.sum(1, 2, 3); }
@@ -165,7 +165,7 @@ export function echo(t) { return host.echo(t); }`,
 }
 
 func TestRuntimeAccessAndValues(t *testing.T) {
-	rt := newRuntime(t, js.Config{
+	rt := newRuntime(t, jolt.Config{
 		Name: "state.js",
 		Source: `
 export const config = { retries: 3, tags: ["a", "b"] };
@@ -240,7 +240,7 @@ export function waitFor(v) { return Promise.resolve(v); }`,
 	if n, _ := counter.Int(); n != 1 {
 		t.Fatalf("counter = %d", n)
 	}
-	if _, err := rt.Export("missing"); !errors.Is(err, js.ErrNotFound) {
+	if _, err := rt.Export("missing"); !errors.Is(err, jolt.ErrNotFound) {
 		t.Fatalf("missing export error = %v", err)
 	}
 
@@ -274,9 +274,9 @@ export function waitFor(v) { return Promise.resolve(v); }`,
 }
 
 func TestScriptMode(t *testing.T) {
-	rt := newRuntime(t, js.Config{
+	rt := newRuntime(t, jolt.Config{
 		Name:   "script.js",
-		Mode:   js.ModeScript,
+		Mode:   jolt.ModeScript,
 		Source: `function twice(x) { return x * 2 } var answer = twice(21);`,
 	})
 	ctx := context.Background()
@@ -293,7 +293,7 @@ func TestScriptMode(t *testing.T) {
 }
 
 func TestAsyncTimersAndRejection(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "async.js",
 		Source: `
 export async function later(ms) {
@@ -324,7 +324,7 @@ export function bad() { throw new TypeError("bad input"); }`,
 	if err == nil {
 		t.Fatalf("fail returned no error")
 	}
-	var jsErr *js.JSError
+	var jsErr *jolt.JSError
 	if !errors.As(err, &jsErr) {
 		t.Fatalf("fail error is %T, want *JSError: %v", err, err)
 	}
@@ -333,26 +333,26 @@ export function bad() { throw new TypeError("bad input"); }`,
 	}
 
 	_, err = ex.Call(ctx, "bad")
-	if !js.IsException(err) {
+	if !jolt.IsException(err) {
 		t.Fatalf("bad error is %T, want a JS exception: %v", err, err)
 	}
-	exc, _ := js.AsException(err)
+	exc, _ := jolt.AsException(err)
 	if exc.Name() != "TypeError" || exc.Message() != "bad input" {
 		t.Fatalf("exception = %s: %s", exc.Name(), exc.Message())
 	}
-	if js.JSStack(err) == "" {
+	if jolt.JSStack(err) == "" {
 		t.Fatalf("expected a stack trace")
 	}
 }
 
 func TestUnhandledRejection(t *testing.T) {
 	var mu sync.Mutex
-	var seen []*js.JSError
-	ex := newExec(t, js.Config{
+	var seen []*jolt.JSError
+	ex := newExec(t, jolt.Config{
 		Name: "reject.js",
 		Source: `
 export function fire() { Promise.reject(new TypeError("unhandled")); return 1; }`,
-		OnUnhandledRejection: func(err *js.JSError) {
+		OnUnhandledRejection: func(err *jolt.JSError) {
 			mu.Lock()
 			seen = append(seen, err)
 			mu.Unlock()
@@ -373,7 +373,7 @@ export function fire() { Promise.reject(new TypeError("unhandled")); return 1; }
 
 func TestTimeoutAndMemoryLimit(t *testing.T) {
 	t.Run("timeout", func(t *testing.T) {
-		ex := newExec(t, js.Config{
+		ex := newExec(t, jolt.Config{
 			Name:   "spin.js",
 			Source: `export function spin() { for (;;) {} }`,
 		})
@@ -383,13 +383,13 @@ func TestTimeoutAndMemoryLimit(t *testing.T) {
 		if err == nil {
 			t.Fatalf("spin returned no error")
 		}
-		if !js.IsTimeout(err) || !errors.Is(err, context.DeadlineExceeded) {
+		if !jolt.IsTimeout(err) || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("timeout error = %v", err)
 		}
 	})
 
 	t.Run("memory", func(t *testing.T) {
-		ex := newExec(t, js.Config{
+		ex := newExec(t, jolt.Config{
 			Name:        "mem.js",
 			MemoryLimit: 1 << 20,
 			Source: `
@@ -404,7 +404,7 @@ export function blow() {
 		if err == nil {
 			t.Fatalf("blow returned no error")
 		}
-		if !js.IsMemoryLimit(err) {
+		if !jolt.IsMemoryLimit(err) {
 			t.Fatalf("memory error = %v", err)
 		}
 	})
@@ -423,7 +423,7 @@ export async function dynamic(x) {
 		"src/main.js": {Data: []byte(main)},
 		"src/util.js": {Data: []byte(util)},
 	}
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:       "main.js",
 		Source:     main,
 		ModuleFS:   fsys,
@@ -443,7 +443,7 @@ export async function dynamic(x) {
 }
 
 func TestModulesFromMap(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "main.js",
 		Source: `
 import { suffix } from "./strings.js";
@@ -475,11 +475,11 @@ export async function write() {
   await writeFile("/workspace/out.txt", "written");
   return "ok";
 }`
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:    "fs.js",
 		Source:  source,
-		FS:      &js.HostFS{Root: dir, Mount: "/workspace"},
-		Network: js.NoNetwork{},
+		FS:      &jolt.HostFS{Root: dir, Mount: "/workspace"},
+		Network: jolt.NoNetwork{},
 	})
 	ctx := context.Background()
 	got, err := ex.Call(ctx, "read")
@@ -499,10 +499,10 @@ export async function write() {
 
 func TestHostFSWrite(t *testing.T) {
 	dir := t.TempDir()
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:   "fs.js",
 		Source: `import { writeFile } from "node:fs/promises"; export async function write() { await writeFile("/workspace/out.txt", "written"); return "ok"; }`,
-		FS:     &js.HostFS{Root: dir, Mount: "/workspace", Write: true},
+		FS:     &jolt.HostFS{Root: dir, Mount: "/workspace", Write: true},
 	})
 	if _, err := ex.Call(context.Background(), "write"); err != nil {
 		t.Fatalf("write: %v", err)
@@ -530,10 +530,10 @@ export async function get() {
   return (await r.text()).trim();
 }`, url)
 
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:    "net.js",
 		Source:  source,
-		Network: &js.HostNetwork{Client: srv.Client(), Allow: js.AllowHosts(host)},
+		Network: &jolt.HostNetwork{Client: srv.Client(), Allow: jolt.AllowHosts(host)},
 	})
 	got, err := ex.Call(context.Background(), "get")
 	if err != nil {
@@ -543,10 +543,10 @@ export async function get() {
 		t.Fatalf("get = %#v", got)
 	}
 
-	blocked := newExec(t, js.Config{
+	blocked := newExec(t, jolt.Config{
 		Name:    "net.js",
 		Source:  source,
-		Network: &js.HostNetwork{Client: srv.Client(), Allow: js.AllowHosts("example.com")},
+		Network: &jolt.HostNetwork{Client: srv.Client(), Allow: jolt.AllowHosts("example.com")},
 	})
 	if _, err := blocked.Call(context.Background(), "get"); err == nil {
 		t.Fatalf("blocked fetch succeeded")
@@ -555,12 +555,12 @@ export async function get() {
 
 func TestConcurrentExecutor(t *testing.T) {
 	var ready atomic.Int64
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:     "add.js",
 		Source:   `export function add(a, b) { return a + b; }`,
 		PoolSize: 4,
 		MaxIdle:  4,
-		OnRuntimeReady: func(*js.Runtime) error {
+		OnRuntimeReady: func(*jolt.Runtime) error {
 			ready.Add(1)
 			return nil
 		},
@@ -595,11 +595,11 @@ func TestConcurrentExecutor(t *testing.T) {
 
 func TestNoReuse(t *testing.T) {
 	var created atomic.Int64
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:    "add.js",
 		Source:  `export function add(a, b) { return a + b; }`,
 		NoReuse: true,
-		OnRuntimeReady: func(*js.Runtime) error {
+		OnRuntimeReady: func(*jolt.Runtime) error {
 			created.Add(1)
 			return nil
 		},
@@ -615,7 +615,7 @@ func TestNoReuse(t *testing.T) {
 }
 
 func TestTypeScript(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "add.ts",
 		Source: `
 export function add(a: number, b: number): number { return a + b; }
@@ -635,7 +635,7 @@ export function greet(name: string): string { return ` + "`hi ${name}`" + `; }`,
 
 func TestConsole(t *testing.T) {
 	var buf bytes.Buffer
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:    "log.js",
 		Source:  `export function log() { console.log("hello", 2, {a: 3}); console.error("bad"); return 1; }`,
 		Console: &buf,
@@ -650,7 +650,7 @@ func TestConsole(t *testing.T) {
 }
 
 func TestWebAssemblyBuildGating(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:   "wasm-gate.js",
 		Source: `export function type() { return typeof WebAssembly; }`,
 	})
@@ -659,16 +659,16 @@ func TestWebAssemblyBuildGating(t *testing.T) {
 		t.Fatalf("type: %v", err)
 	}
 	want := "undefined"
-	if js.WebAssemblySupported {
+	if jolt.WebAssemblySupported {
 		want = "object"
 	}
 	if got != want {
 		t.Fatalf("typeof WebAssembly = %#v, want %q", got, want)
 	}
-	if !js.WebAssemblySupported {
-		if _, err := js.NewRuntime(js.Config{
+	if !jolt.WebAssemblySupported {
+		if _, err := jolt.NewRuntime(jolt.Config{
 			Source:      "1",
-			WebAssembly: js.WebAssemblyOptions{MemoryLimitPages: 1},
+			WebAssembly: jolt.WebAssemblyOptions{MemoryLimitPages: 1},
 		}); err == nil {
 			t.Fatalf("memory options in a nowasm build were accepted")
 		}
@@ -676,13 +676,13 @@ func TestWebAssemblyBuildGating(t *testing.T) {
 }
 
 func TestConfigValidation(t *testing.T) {
-	if _, err := js.New(js.Config{}); !errors.Is(err, js.ErrNoSource) {
+	if _, err := jolt.New(jolt.Config{}); !errors.Is(err, jolt.ErrNoSource) {
 		t.Fatalf("empty config error = %v", err)
 	}
-	if _, err := js.New(js.Config{Source: "1", SourceFile: "x.js"}); err == nil {
+	if _, err := jolt.New(jolt.Config{Source: "1", SourceFile: "x.js"}); err == nil {
 		t.Fatalf("source and source file both set: no error")
 	}
-	if _, err := js.New(js.Config{Source: "1", Mode: 99}); err == nil {
+	if _, err := jolt.New(jolt.Config{Source: "1", Mode: 99}); err == nil {
 		t.Fatalf("invalid mode: no error")
 	}
 }
@@ -690,7 +690,7 @@ func TestConfigValidation(t *testing.T) {
 func TestFeatureComposition(t *testing.T) {
 	// A user-written feature can add globals and clean up.
 	var closed atomic.Bool
-	feature := js.FeatureFunc(func(env *js.Env) (func() error, error) {
+	feature := jolt.FeatureFunc(func(env *jolt.Env) (func() error, error) {
 		if err := env.SetFunc("featureValue", func() int { return 7 }); err != nil {
 			return nil, err
 		}
@@ -699,10 +699,10 @@ func TestFeatureComposition(t *testing.T) {
 			return nil
 		}, nil
 	})
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name:     "feature.js",
 		Source:   `export function value() { return featureValue(); }`,
-		Features: []js.Feature{feature},
+		Features: []jolt.Feature{feature},
 		NoReuse:  true,
 	})
 	got, err := ex.Call(context.Background(), "value")
@@ -718,21 +718,21 @@ func TestFeatureComposition(t *testing.T) {
 }
 
 func TestNoFS(t *testing.T) {
-	_, err := js.New(js.Config{
+	_, err := jolt.New(jolt.Config{
 		Name:   "fs.js",
 		Source: `import { readFile } from "node:fs/promises"; export function read() { return readFile.length; }`,
-		FS:     js.NoFS{},
+		FS:     jolt.NoFS{},
 	})
 	if err == nil {
 		t.Fatalf("importing node:fs without FS succeeded")
 	}
-	if !errors.Is(err, js.ErrModuleNotFound) {
+	if !errors.Is(err, jolt.ErrModuleNotFound) {
 		t.Fatalf("error = %v, want ErrModuleNotFound", err)
 	}
 }
 
 func TestPanicBecomesError(t *testing.T) {
-	ex := newExec(t, js.Config{
+	ex := newExec(t, jolt.Config{
 		Name: "panic.js",
 		Source: `export function run() {
   try { host.boom(); } catch (e) { return e.message; }

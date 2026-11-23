@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -119,7 +119,7 @@ func TestCoverageConfigDefaultsAndClones(t *testing.T) {
 	}
 
 	ex2 := covExec(t, Config{Source: "1"})
-	if got := ex2.Config().Name; got != "js.js" {
+	if got := ex2.Config().Name; got != "jolt.js" {
 		t.Fatalf("default Name = %q", got)
 	}
 	if _, err := New(Config{SourceFile: filepath.Join(dir, "missing.js")}); err == nil {
@@ -194,10 +194,10 @@ func TestCoverageErrorTypes(t *testing.T) {
 		t.Fatalf("wrap(nil) != nil")
 	}
 	withPath := &Error{Op: "call", Path: "f", Err: io.EOF}
-	if got := withPath.Error(); got != "js: call f: EOF" {
+	if got := withPath.Error(); got != "jolt: call f: EOF" {
 		t.Fatalf("Error() = %q", got)
 	}
-	if got := wrap("eval", "", io.EOF).Error(); got != "js: eval: EOF" {
+	if got := wrap("eval", "", io.EOF).Error(); got != "jolt: eval: EOF" {
 		t.Fatalf("wrap Error() = %q", got)
 	}
 	if !errors.Is(wrap("call", "f", io.EOF), io.EOF) {
@@ -212,10 +212,10 @@ func TestCoverageErrorTypes(t *testing.T) {
 	if got := (&JSError{Name: "E"}).Error(); got != "E: <nil>" {
 		t.Fatalf("JSError nil value = %q", got)
 	}
-	if got := (&PanicError{Func: "f", Value: "boom"}).Error(); got != "js: panic in f: boom" {
+	if got := (&PanicError{Func: "f", Value: "boom"}).Error(); got != "jolt: panic in f: boom" {
 		t.Fatalf("PanicError = %q", got)
 	}
-	if got := (&PanicError{Value: "boom"}).Error(); got != "js: panic: boom" {
+	if got := (&PanicError{Value: "boom"}).Error(); got != "jolt: panic: boom" {
 		t.Fatalf("PanicError no func = %q", got)
 	}
 
@@ -445,7 +445,7 @@ export function later() { return Promise.resolve(5); }`,
 		t.Fatalf("Export(missing) = %v", err)
 	}
 
-	// SetFunc accepts engine values, js values and bad inputs.
+	// SetFunc accepts engine values, jolt values and bad inputs.
 	rawID, _ := rt.Get("id")
 	if err := rt.SetFunc("alias", rawID.Raw()); err != nil {
 		t.Fatalf("SetFunc(moejs.Value): %v", err)
@@ -791,7 +791,7 @@ func TestCoverageFuncsConversion(t *testing.T) {
 		t.Fatalf("object error = %q", got.String())
 	}
 
-	// Return values: nil and foreign js values.
+	// Return values: nil and foreign jolt values.
 	rt3 := covRuntime(t, Config{Source: `export function call(f) { try { return f(); } catch (e) { return e.message; } }`})
 	other := covRuntime(t, Config{Source: "export const x = 1;"})
 	foreign, _ := other.Get("x")

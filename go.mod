@@ -1,4 +1,4 @@
-module github.com/malivvan/js
+module github.com/malivvan/jolt
 
 go 1.25.0
 

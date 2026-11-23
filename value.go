@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -38,7 +38,7 @@ func (v *Value) Runtime() *Runtime {
 
 func (v *Value) check() error {
 	if v == nil || v.rt == nil {
-		return fmt.Errorf("js: nil Value")
+		return fmt.Errorf("jolt: nil Value")
 	}
 	if v.rt.closed.Load() {
 		return ErrClosed
@@ -68,7 +68,7 @@ func (v *Value) Into(target any) error {
 		return err
 	}
 	if target == nil {
-		return fmt.Errorf("js: decode into nil target")
+		return fmt.Errorf("jolt: decode into nil target")
 	}
 	return wrap("decode", "", v.rt.raw.UnmarshalWith(v.v, target, v.rt.cfg.Decode))
 }
@@ -119,11 +119,11 @@ func (v *Value) Int() (int64, error) {
 		// range, so compare with >= rather than >.
 		if math.IsNaN(n) || math.IsInf(n, 0) || n != math.Trunc(n) ||
 			n < math.MinInt64 || n >= math.MaxInt64 {
-			return 0, fmt.Errorf("js: %v is not an integral int64", n)
+			return 0, fmt.Errorf("jolt: %v is not an integral int64", n)
 		}
 		return int64(n), nil
 	default:
-		return 0, fmt.Errorf("js: %s is not a number", typeName(v.v.Type()))
+		return 0, fmt.Errorf("jolt: %s is not a number", typeName(v.v.Type()))
 	}
 }
 
@@ -139,7 +139,7 @@ func (v *Value) Float() (float64, error) {
 	case int64:
 		return float64(n), nil
 	default:
-		return 0, fmt.Errorf("js: %s is not a number", typeName(v.v.Type()))
+		return 0, fmt.Errorf("jolt: %s is not a number", typeName(v.v.Type()))
 	}
 }
 

@@ -1,14 +1,14 @@
-package js_test
+package jolt_test
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/malivvan/js"
+	"github.com/malivvan/jolt"
 )
 
 func ExampleNew() {
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name: "greet.js",
 		Source: `
 export function greet(name) {
@@ -34,13 +34,13 @@ export function greet(name) {
 }
 
 func ExampleFeatureFunc() {
-	feature := js.FeatureFunc(func(env *js.Env) (func() error, error) {
+	feature := jolt.FeatureFunc(func(env *jolt.Env) (func() error, error) {
 		return nil, env.SetFunc("featureValue", func() string { return "from a feature" })
 	})
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name:     "feature.js",
 		Source:   `export function value() { return featureValue(); }`,
-		Features: []js.Feature{feature},
+		Features: []jolt.Feature{feature},
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -63,7 +63,7 @@ type exampleTask struct {
 }
 
 func ExampleExecutor_CallInto() {
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name: "build.js",
 		Source: `
 export function build(task) {

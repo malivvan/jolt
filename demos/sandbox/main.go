@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/malivvan/js"
+	"github.com/malivvan/jolt"
 )
 
 const source = `
@@ -26,11 +26,11 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name:        "sandbox.js",
 		Source:      source,
-		FS:          js.NoFS{},
-		Network:     js.NoNetwork{},
+		FS:          jolt.NoFS{},
+		Network:     jolt.NoNetwork{},
 		MemoryLimit: 8 << 20,
 		Globals: map[string]any{
 			"host": map[string]any{

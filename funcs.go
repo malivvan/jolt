@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -34,12 +34,12 @@ var (
 // or error.
 func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) {
 	if fn == nil {
-		return nil, 0, fmt.Errorf("js: %w: nil func", ErrNotFunction)
+		return nil, 0, fmt.Errorf("jolt: %w: nil func", ErrNotFunction)
 	}
 	fv := reflect.ValueOf(fn)
 	ft := fv.Type()
 	if ft.Kind() != reflect.Func {
-		return nil, 0, fmt.Errorf("js: %w: %T", ErrNotFunction, fn)
+		return nil, 0, fmt.Errorf("jolt: %w: %T", ErrNotFunction, fn)
 	}
 	// A function with the engine's own signature needs no reflection.
 	if ft.ConvertibleTo(nativeFuncType) {
@@ -74,7 +74,7 @@ func (r *Runtime) adaptFunc(name string, fn any) (moejs.NativeFunc, int, error) 
 	case nout == 1:
 	case nout == 2 && ft.Out(1).Implements(errorType):
 	default:
-		return nil, 0, fmt.Errorf("js: %w: %s returns %d values; want (T), (T, error) or error",
+		return nil, 0, fmt.Errorf("jolt: %w: %s returns %d values; want (T), (T, error) or error",
 			ErrNotFunction, ft, nout)
 	}
 
@@ -168,7 +168,7 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 		if arg.IsObject() {
 			return reflect.ValueOf(arg.AsObject()), nil
 		}
-		return reflect.Zero(t), fmt.Errorf("js: argument %d is not an object", index+1)
+		return reflect.Zero(t), fmt.Errorf("jolt: argument %d is not an object", index+1)
 	case realmPtrType:
 		return reflect.ValueOf(r.raw.Realm()), nil
 	case runtimePtrType:
@@ -182,7 +182,7 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 	// this, and a JSON round trip would lose the function entirely.
 	if t.Kind() == reflect.Func {
 		if !engine.IsCallable(arg) {
-			return reflect.Zero(t), fmt.Errorf("js: argument %d is not a function", index+1)
+			return reflect.Zero(t), fmt.Errorf("jolt: argument %d is not a function", index+1)
 		}
 		return r.funcValue(arg, t, index)
 	}
@@ -210,10 +210,10 @@ func (r *Runtime) paramValue(arg moejs.Value, t reflect.Type, index int) (reflec
 		}
 	}
 	if gerr != nil {
-		return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert JavaScript %s to %s: %w",
+		return reflect.Zero(t), fmt.Errorf("jolt: argument %d: cannot convert JavaScript %s to %s: %w",
 			index+1, typeName(arg.Type()), t, gerr)
 	}
-	return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert JavaScript %s to %s",
+	return reflect.Zero(t), fmt.Errorf("jolt: argument %d: cannot convert JavaScript %s to %s",
 		index+1, typeName(arg.Type()), t)
 }
 
@@ -257,7 +257,7 @@ func isNumericKind(k reflect.Kind) bool {
 // type. It must be called on the runtime's goroutine, like any other call.
 func (r *Runtime) funcValue(arg moejs.Value, t reflect.Type, index int) (reflect.Value, error) {
 	if t.IsVariadic() {
-		return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert a JavaScript function to variadic %s", index+1, t)
+		return reflect.Zero(t), fmt.Errorf("jolt: argument %d: cannot convert a JavaScript function to variadic %s", index+1, t)
 	}
 	nout := t.NumOut()
 	switch {
@@ -266,7 +266,7 @@ func (r *Runtime) funcValue(arg moejs.Value, t reflect.Type, index int) (reflect
 	case nout == 1:
 	case nout == 2 && t.Out(1).Implements(errorType):
 	default:
-		return reflect.Zero(t), fmt.Errorf("js: argument %d: cannot convert a JavaScript function to %s; want (T), (T, error) or error results", index+1, t)
+		return reflect.Zero(t), fmt.Errorf("jolt: argument %d: cannot convert a JavaScript function to %s; want (T), (T, error) or error results", index+1, t)
 	}
 	fn := reflect.MakeFunc(t, func(args []reflect.Value) []reflect.Value {
 		vals := make([]moejs.Value, len(args))
@@ -326,7 +326,7 @@ func (r *Runtime) returnValue(name string, v reflect.Value, t reflect.Type) (moe
 		}
 		p := v.Interface().(*Value)
 		if p == nil || p.rt != r {
-			return moejs.Undefined(), fmt.Errorf("js: %s returned a *Value of another runtime", name)
+			return moejs.Undefined(), fmt.Errorf("jolt: %s returned a *Value of another runtime", name)
 		}
 		return p.v, nil
 	}
@@ -376,7 +376,7 @@ func (r *Runtime) fromGo(v any) (moejs.Value, error) {
 			return moejs.Null(), nil
 		}
 		if x.rt != r {
-			return moejs.Undefined(), fmt.Errorf("js: *Value belongs to another runtime")
+			return moejs.Undefined(), fmt.Errorf("jolt: *Value belongs to another runtime")
 		}
 		return x.v, nil
 	case moejs.NativeFunc:

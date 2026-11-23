@@ -1,7 +1,7 @@
-// Package js is a developer-focused JavaScript executor built on the
+// Package jolt is a developer-focused JavaScript executor built on the
 // moejs engine.
 //
-// js wraps moejs with the pieces a Go program usually ends up writing
+// jolt wraps moejs with the pieces a Go program usually ends up writing
 // itself:
 //
 //   - a Config that gathers the engine, compiler, event-loop, sandbox and
@@ -25,7 +25,7 @@
 //	  return utils.prefix + " " + name.trim();
 //	}
 //	`
-//	exec, err := js.New(js.Config{
+//	exec, err := jolt.New(jolt.Config{
 //		Name:   "greet.js",
 //		Source: source,
 //		Globals: map[string]any{
@@ -53,7 +53,7 @@
 // A parameter of type context.Context receives the context of the running
 // call, so a JavaScript invocation is cancelled when the Go caller's context
 // ends. A parameter of type moejs.Value receives the raw engine value, and
-// *Value receives a js handle. A parameter of a Go func type receives the
+// *Value receives a jolt handle. A parameter of a Go func type receives the
 // JavaScript function as a callable Go value, so a host function can take a
 // callback. A function may be variadic and may return (T), (T, error) or
 // error. A Go panic inside a registered function becomes a *PanicError thrown
@@ -91,14 +91,14 @@
 //
 //	type metrics struct{ sink io.Writer }
 //
-//	func (m metrics) Install(env *js.Env) (func() error, error) {
+//	func (m metrics) Install(env *jolt.Env) (func() error, error) {
 //		return nil, env.SetFunc("recordMetric", m.record)
 //	}
 //
-//	exec, err := js.New(js.Config{
+//	exec, err := jolt.New(jolt.Config{
 //		Source:  source,
-//		Network: &js.HostNetwork{Client: client, Allow: js.AllowHosts("api.example.com")},
-//		Features: []js.Feature{metrics{sink}},
+//		Network: &jolt.HostNetwork{Client: client, Allow: jolt.AllowHosts("api.example.com")},
+//		Features: []jolt.Feature{metrics{sink}},
 //	})
 //
 // # WebAssembly
@@ -152,9 +152,9 @@
 // # Security
 //
 // moejs runs pure Go and provides memory limits, dynamic-code limits,
-// interrupts and frozen builtins. js passes those settings through
+// interrupts and frozen builtins. jolt passes those settings through
 // Config. A sandbox is only as strong as its features: HostFS confines every
 // path to its Root, and HostNetwork with no Client has no network. Both
 // accept Allow hooks. Do not run untrusted code with NoFS/NoNetwork replaced
 // by an unrestricted feature.
-package js
+package jolt

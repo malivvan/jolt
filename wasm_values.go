@@ -1,6 +1,6 @@
 //go:build !nowasm && !(js && wasm)
 
-package js
+package jolt
 
 import (
 	"context"
@@ -136,7 +136,7 @@ func (s *wasmState) newMemory(min, max uint32, hasMax, shared bool) (*wasmMemory
 	}
 	mem := mod.ExportedMemory("memory")
 	if mem == nil {
-		return nil, fmt.Errorf("js: internal WebAssembly memory support module has no memory export")
+		return nil, fmt.Errorf("jolt: internal WebAssembly memory support module has no memory export")
 	}
 	return &wasmMemory{
 		state:         s,
@@ -150,12 +150,12 @@ func (s *wasmState) newMemory(min, max uint32, hasMax, shared bool) (*wasmMemory
 func (s *wasmState) instantiateSupport(ctx context.Context, name string, binary []byte) (api.Module, error) {
 	cm, err := s.wr.CompileModule(ctx, binary)
 	if err != nil {
-		return nil, fmt.Errorf("js: internal WebAssembly support module: %w", err)
+		return nil, fmt.Errorf("jolt: internal WebAssembly support module: %w", err)
 	}
 	mod, err := s.wr.InstantiateModule(ctx, cm, wazero.NewModuleConfig().WithName(name).WithStartFunctions())
 	if err != nil {
 		_ = cm.Close(ctx)
-		return nil, fmt.Errorf("js: internal WebAssembly support module: %w", err)
+		return nil, fmt.Errorf("jolt: internal WebAssembly support module: %w", err)
 	}
 	return mod, nil
 }
@@ -294,7 +294,7 @@ func (s *wasmState) newGlobal(valueType api.ValueType, mutable bool, bits uint64
 	}
 	g := mod.ExportedGlobal("global")
 	if g == nil {
-		return nil, fmt.Errorf("js: internal WebAssembly global support module has no global export")
+		return nil, fmt.Errorf("jolt: internal WebAssembly global support module has no global export")
 	}
 	return &wasmGlobal{
 		state:         s,

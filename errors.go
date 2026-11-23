@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -8,29 +8,29 @@ import (
 	"github.com/MoeForge/moejs"
 )
 
-// Errors returned by js itself. Errors produced by the engine keep their
+// Errors returned by jolt itself. Errors produced by the engine keep their
 // type; for example a JavaScript throw is still an *Exception, and errors.As
-// finds it through js's *Error wrapper.
+// finds it through jolt's *Error wrapper.
 var (
 	// ErrClosed is returned when a Runtime or Executor is used after Close.
-	ErrClosed = errors.New("js: closed")
+	ErrClosed = errors.New("jolt: closed")
 	// ErrNotFunction is returned when a path or value names something that is
 	// not callable.
-	ErrNotFunction = errors.New("js: value is not a function")
+	ErrNotFunction = errors.New("jolt: value is not a function")
 	// ErrModuleNotFound is wrapped by resolution errors; a custom
 	// ModuleLoader or resolver may return it to fall through to the next
 	// loader.
-	ErrModuleNotFound = errors.New("js: module not found")
+	ErrModuleNotFound = errors.New("jolt: module not found")
 	// ErrNotFound is returned when an explicit lookup (Export) does not find
 	// the requested name. Get returns an undefined Value instead.
-	ErrNotFound = errors.New("js: not found")
+	ErrNotFound = errors.New("jolt: not found")
 	// ErrNoSource is returned by New when Config names neither Source nor
 	// SourceFile.
-	ErrNoSource = errors.New("js: no source: set Config.Source or Config.SourceFile")
+	ErrNoSource = errors.New("jolt: no source: set Config.Source or Config.SourceFile")
 	// ErrReentrant is returned when a Runtime method that drives the event
 	// loop is called from JavaScript running on that same loop, where a
 	// nested loop cannot run.
-	ErrReentrant = errors.New("js: cannot drive the event loop from inside JavaScript")
+	ErrReentrant = errors.New("jolt: cannot drive the event loop from inside JavaScript")
 )
 
 // Aliases for the engine's error and exception types, so users of the
@@ -53,7 +53,7 @@ type (
 // Config.Decode limit.
 var ErrTooLarge = moejs.ErrTooLarge
 
-// Error wraps an engine or host error with the operation and path js was
+// Error wraps an engine or host error with the operation and path jolt was
 // running. It implements Unwrap, so errors.Is and errors.As reach the cause.
 type Error struct {
 	Op   string // "compile", "load", "call", "eval", "get", "set", ...
@@ -64,9 +64,9 @@ type Error struct {
 func (e *Error) Error() string {
 	switch {
 	case e.Path != "":
-		return "js: " + e.Op + " " + e.Path + ": " + e.Err.Error()
+		return "jolt: " + e.Op + " " + e.Path + ": " + e.Err.Error()
 	default:
-		return "js: " + e.Op + ": " + e.Err.Error()
+		return "jolt: " + e.Op + ": " + e.Err.Error()
 	}
 }
 
@@ -104,9 +104,9 @@ type PanicError struct {
 
 func (e *PanicError) Error() string {
 	if e.Func != "" {
-		return fmt.Sprintf("js: panic in %s: %v", e.Func, e.Value)
+		return fmt.Sprintf("jolt: panic in %s: %v", e.Func, e.Value)
 	}
-	return fmt.Sprintf("js: panic: %v", e.Value)
+	return fmt.Sprintf("jolt: panic: %v", e.Value)
 }
 
 func wrap(op, path string, err error) error {

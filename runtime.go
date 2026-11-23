@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 // Runtime owns one moejs runtime, its event loop and its installed features.
 //
 // A Runtime is not safe for concurrent use: moejs requires one goroutine at a
-// time, and so does js. Executor provides concurrency by keeping a pool of
+// time, and so does jolt. Executor provides concurrency by keeping a pool of
 // runtimes. Context cancellation is safe: it interrupts the call from another
 // goroutine.
 type Runtime struct {
@@ -72,7 +72,7 @@ func (r *Runtime) Close() error {
 		return nil
 	}
 	if r.running.Load() {
-		return fmt.Errorf("js: Close called while the runtime is running")
+		return fmt.Errorf("jolt: Close called while the runtime is running")
 	}
 	if !r.closing.CompareAndSwap(false, true) {
 		return nil

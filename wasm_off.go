@@ -1,11 +1,11 @@
 //go:build nowasm || (js && wasm)
 
-package js
+package jolt
 
 import "errors"
 
 // WebAssemblySupported reports whether this binary includes the WebAssembly
-// JavaScript API. It is false when js is built with the nowasm tag or for
+// JavaScript API. It is false when jolt is built with the nowasm tag or for
 // GOARCH=wasm.
 const WebAssemblySupported = false
 
@@ -17,7 +17,7 @@ func installWebAssembly(env *Env, opts WebAssemblyOptions) (func() error, error)
 		return nil, nil
 	}
 	if opts.MemoryLimitPages != 0 || opts.WASI.configured() {
-		return nil, errors.New("js: WebAssembly support is disabled in this build (nowasm tag or js/wasm)")
+		return nil, errors.New("jolt: WebAssembly support is disabled in this build (nowasm tag or js/wasm)")
 	}
 	return nil, nil
 }

@@ -3,7 +3,7 @@
 // This file implements the browser WebAssembly JavaScript API on top of
 // wazero. It is compiled by default; build with -tags nowasm (or for
 // GOARCH=wasm) to leave it out.
-package js
+package jolt
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 )
 
 // WebAssemblySupported reports whether this binary includes the WebAssembly
-// JavaScript API. It is true unless js was built with the nowasm tag or
+// JavaScript API. It is true unless jolt was built with the nowasm tag or
 // for GOARCH=wasm.
 const WebAssemblySupported = true
 
@@ -88,7 +88,7 @@ func installWebAssembly(env *Env, opts WebAssemblyOptions) (func() error, error)
 		pages = 65536 // 4 GiB, the browser limit
 	}
 	if pages > 65536 {
-		return nil, fmt.Errorf("js: WebAssembly.MemoryLimitPages %d exceeds the 65536-page (4 GiB) limit", pages)
+		return nil, fmt.Errorf("jolt: WebAssembly.MemoryLimitPages %d exceeds the 65536-page (4 GiB) limit", pages)
 	}
 	ctx := context.Background()
 	cfg := wazero.NewRuntimeConfig().
@@ -262,7 +262,7 @@ func (s *wasmState) accessor(o *engine.Object, name string, get engine.NativeFun
 
 func (s *wasmState) nextName(kind string) string {
 	s.count++
-	return fmt.Sprintf("js:wasm:%s:%d", kind, s.count)
+	return fmt.Sprintf("jolt:wasm:%s:%d", kind, s.count)
 }
 
 // isHostNamespace reports whether an import module is provided by the wazero
@@ -805,7 +805,7 @@ func (s *wasmState) buildNamespace(ctx context.Context, p *namespacePlan) (api.M
 // state: RunScript evaluates it in this runtime's global object, and a
 // cached compile error would otherwise leak into every later runtime.
 func (s *wasmState) installStreaming(context.Context) error {
-	script, err := moejs.CompileScript("js:webassembly-streaming", wasmStreamingSource)
+	script, err := moejs.CompileScript("jolt:webassembly-streaming", wasmStreamingSource)
 	if err != nil {
 		return err
 	}
@@ -930,10 +930,10 @@ type wasmBinaryInfo struct {
 // of a binary that wazero has already validated. It does not interpret code.
 func parseWasmBinary(b []byte) (*wasmBinaryInfo, error) {
 	if len(b) < 8 || b[0] != 0x00 || b[1] != 0x61 || b[2] != 0x73 || b[3] != 0x6d {
-		return nil, errors.New("js: invalid WebAssembly binary: bad magic")
+		return nil, errors.New("jolt: invalid WebAssembly binary: bad magic")
 	}
 	if b[4] != 0x01 || b[5] != 0x00 || b[6] != 0x00 || b[7] != 0x00 {
-		return nil, errors.New("js: invalid WebAssembly binary: unsupported version")
+		return nil, errors.New("jolt: invalid WebAssembly binary: unsupported version")
 	}
 	info := &wasmBinaryInfo{}
 	r := wasmReader{b: b, pos: 8}
@@ -949,7 +949,7 @@ func parseWasmBinary(b []byte) (*wasmBinaryInfo, error) {
 		start := r.pos
 		end := start + int(size)
 		if end < start || end > len(r.b) {
-			return nil, errors.New("js: invalid WebAssembly binary: section overruns the binary")
+			return nil, errors.New("jolt: invalid WebAssembly binary: section overruns the binary")
 		}
 		sec := wasmReader{b: r.b[:end], pos: start}
 		switch id {
@@ -1050,7 +1050,7 @@ func parseWasmImports(r *wasmReader, info *wasmBinaryInfo) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("js: invalid WebAssembly binary: import %d has kind %d", i, kindByte)
+			return fmt.Errorf("jolt: invalid WebAssembly binary: import %d has kind %d", i, kindByte)
 		}
 		info.imports = append(info.imports, imp)
 	}
@@ -1144,7 +1144,7 @@ type wasmReader struct {
 
 func (r *wasmReader) u8() (byte, error) {
 	if r.pos >= len(r.b) {
-		return 0, errors.New("js: invalid WebAssembly binary: unexpected end")
+		return 0, errors.New("jolt: invalid WebAssembly binary: unexpected end")
 	}
 	v := r.b[r.pos]
 	r.pos++
@@ -1165,7 +1165,7 @@ func (r *wasmReader) u32() (uint32, error) {
 		}
 		shift += 7
 	}
-	return 0, errors.New("js: invalid WebAssembly binary: LEB128 is too long")
+	return 0, errors.New("jolt: invalid WebAssembly binary: LEB128 is too long")
 }
 
 func (r *wasmReader) str() (string, error) {
@@ -1174,7 +1174,7 @@ func (r *wasmReader) str() (string, error) {
 		return "", err
 	}
 	if int(n) > len(r.b)-r.pos {
-		return "", errors.New("js: invalid WebAssembly binary: string overruns section")
+		return "", errors.New("jolt: invalid WebAssembly binary: string overruns section")
 	}
 	s := string(r.b[r.pos : r.pos+int(n)])
 	r.pos += int(n)
@@ -1243,14 +1243,14 @@ func (r *wasmReader) skipInitExpr() error {
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e: // extended-const arithmetic
 			// no immediates
 		default:
-			return fmt.Errorf("js: invalid WebAssembly binary: unsupported constant expression opcode 0x%02x", op)
+			return fmt.Errorf("jolt: invalid WebAssembly binary: unsupported constant expression opcode 0x%02x", op)
 		}
 	}
 }
 
 func (r *wasmReader) bytes(n int) ([]byte, error) {
 	if n < 0 || n > len(r.b)-r.pos {
-		return nil, errors.New("js: invalid WebAssembly binary: value overruns section")
+		return nil, errors.New("jolt: invalid WebAssembly binary: value overruns section")
 	}
 	v := r.b[r.pos : r.pos+n]
 	r.pos += n

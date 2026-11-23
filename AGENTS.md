@@ -1,17 +1,23 @@
 # AGENTS.md
 
-`js` — a developer-focused JavaScript executor for Go, built on
+`jolt` — a developer-focused JavaScript executor for Go, built on
 [moejs](https://github.com/MoeForge/moejs), with a browser-style WebAssembly
 API backed by wazero.
 
 ## Project
 
-- Go module: `github.com/malivvan/js`. The package is named `js`.
-- Entry points: `js.New(Config)` returns an `*Executor` (compiled once,
-  pooled runtimes); `js.NewRuntime(Config)` returns one owned `*Runtime`.
+- Go module: `github.com/malivvan/jolt`. The package is named `jolt`.
+- Entry points: `jolt.New(Config)` returns an `*Executor` (compiled once,
+  pooled runtimes); `jolt.NewRuntime(Config)` returns one owned `*Runtime`.
 - Manifest: `go.mod` (Go 1.25). README is the user-facing guide; `doc.go`
-  holds the package docs.
+  holds the package docs; `LICENSE` is MIT.
 - WebAssembly is part of the default build. `-tags nowasm` removes it.
+
+## Layout
+
+- Repository root: the `jolt` package and its tests.
+- `demos/`: runnable, dependency-free programs the CI smoke test runs.
+- `vendor/`: wazero and moejs, vendored for reproducible builds.
 
 ## Commands
 
@@ -26,13 +32,13 @@ gofmt -l .                      # repository is gofmt-clean
 go test -coverprofile=coverage.out .    # root package; gate is >= 90%
 go tool cover -func=coverage.out | tail -1
 
-go run ./examples/greet         # hello world!
-go run ./examples/sandbox       # 42
-go run ./examples/webassembly   # hello from wasm / ok
+go run ./demos/greet         # hello world!
+go run ./demos/sandbox       # 42
+go run ./demos/webassembly   # hello from wasm / ok
 ```
 
 CI lives in `.github/workflows/ci.yml`: both build modes, race detector,
-examples smoke test, a 90% coverage gate, and staticcheck.
+the demos smoke test, a 90% coverage gate, and staticcheck.
 
 ## Architecture
 
@@ -53,6 +59,9 @@ examples smoke test, a 90% coverage gate, and staticcheck.
 
 - WebAssembly implementation files use
   `//go:build !nowasm && !(js && wasm)` — **the backend is on by default**.
+  The `js` and `wasm` tags are the GOOS and GOARCH of the
+  `GOOS=js GOARCH=wasm` target, not the old package name: the guard excludes
+  the wazero backend when cross-compiling for the browser/Node target.
 - `wasm_off.go` uses the complement, `//go:build nowasm || (js && wasm)`.
 - `WebAssemblyOptions` and `WebAssemblyWASIOptions` live in `config.go`
   (untagged) because `Config` and the disabled stub reference them in both
@@ -61,13 +70,16 @@ examples smoke test, a 90% coverage gate, and staticcheck.
   Go for `GOARCH=wasm`, and `-tags wasm` makes the standard library select
   wasm sources and fail. `nowasm` is the opt-out.
 - Keep the `!(js && wasm)` guard on the implementation: wazero is not built
-  for `GOARCH=wasm`.
+  for `GOOS=js GOARCH=wasm`.
 
 ## Conventions
 
 - `gofmt` is the only formatter; all files are gofmt-clean.
-- Exported API needs concise doc comments. Errors created by js use the
-  `"js: ..."` prefix; wrap engine errors so `errors.Is`/`errors.As` work.
+- Exported API needs concise doc comments. Errors created by jolt use the
+  `"jolt: ..."` prefix; wrap engine errors so `errors.Is`/`errors.As` work.
+- The public module path is `github.com/malivvan/jolt`. Do not reintroduce the
+  old `js` name in import paths, error prefixes or documentation (the `js`
+  build tag is the GOOS tag and stays).
 - Features are composable: new globals/filesystems/network integrations
   implement `Feature`, not ad-hoc setup in `New`.
 - WASI defaults are sandboxed (no args/env/FS/stdio, deterministic random).
@@ -80,7 +92,7 @@ examples smoke test, a 90% coverage gate, and staticcheck.
 - Tests use the standard `testing` package; keep broad internal coverage in
   `coverage_test.go` and WebAssembly coverage in `wasm_test.go` rather than
   spreading many small test files.
-- Do not commit generated `.wasm` artifacts outside `examples/`; the example
+- Do not commit generated `.wasm` artifacts outside `demos/`; the demo
   assembles its module in Go.
 
 ## Notes

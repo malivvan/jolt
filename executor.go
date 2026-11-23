@@ -1,4 +1,4 @@
-package js
+package jolt
 
 import (
 	"context"
@@ -132,7 +132,7 @@ func (e *Executor) Run(ctx context.Context, fn func(*Runtime) error) error {
 		return ErrClosed
 	}
 	if fn == nil {
-		return errors.New("js: nil Run function")
+		return errors.New("jolt: nil Run function")
 	}
 	if ctx == nil {
 		ctx = context.Background()

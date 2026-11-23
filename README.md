@@ -1,9 +1,15 @@
-# js
+# jolt
+
+[![CI](https://github.com/malivvan/jolt/actions/workflows/ci.yml/badge.svg)](https://github.com/malivvan/jolt/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/malivvan/jolt.svg)](https://pkg.go.dev/github.com/malivvan/jolt)
+[![Go Report Card](https://goreportcard.com/badge/github.com/malivvan/jolt)](https://goreportcard.com/report/github.com/malivvan/jolt)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/malivvan/jolt)](go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A developer-focused JavaScript executor for Go, built on
 [moejs](https://github.com/MoeForge/moejs).
 
-js turns moejs's low-level engine API into a small, ergonomic library:
+jolt turns moejs's low-level engine API into a small, ergonomic library:
 
 - **One `Config` for everything** — source, engine limits, event loop, sandbox,
   imports, pool size and hooks.
@@ -25,11 +31,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/malivvan/js"
+	"github.com/malivvan/jolt"
 )
 
 func main() {
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name: "greet.js",
 		Source: `
 export function greet(name) {
@@ -52,7 +58,7 @@ export function greet(name) {
 }
 ```
 
-> The module path is `github.com/malivvan/js` and the package name is `js`.
+> The module path is `github.com/malivvan/jolt` and the package name is `jolt`.
 > Adjust the module line in `go.mod` and the import paths if you fork it.
 
 ## Exposing Go to JavaScript
@@ -89,10 +95,10 @@ A parameter may be:
 | Go type | Receives |
 | --- | --- |
 | `context.Context` | the context of the running call (first parameter or any position) |
-| `*js.Runtime` | the runtime, for callbacks during the call |
+| `*jolt.Runtime` | the runtime, for callbacks during the call |
 | `*moejs.Realm` | the engine realm |
 | `moejs.Value` | the raw JavaScript value |
-| `*js.Value` | a js value handle |
+| `*jolt.Value` | a jolt value handle |
 | `*moejs.Object` | the raw object value |
 | a Go `func` type | the JavaScript function, callable from Go |
 | any other Go type | decoded from the JavaScript value, with structs and maps using their `json` tags |
@@ -110,7 +116,7 @@ shapes as a host function; a throw inside the callback comes back as a Go
 error. A variadic `func` parameter type is rejected.
 
 Variadic parameters work. A Go panic is recovered and thrown as a JavaScript
-`Error` (and exposed to Go as `*js.PanicError`). Named functions from
+`Error` (and exposed to Go as `*jolt.PanicError`). Named functions from
 different runtimes are rejected, as moejs requires.
 
 ### Values and namespaces
@@ -150,8 +156,8 @@ err = exec.CallInto(ctx, "buildRequest", &req, task)
 ```
 
 Unless `Config.DisableAwaitPromises` is set, a returned promise is awaited on
-the runtime's event loop. A rejection becomes a `*js.JSError`; a
-synchronous `throw` remains a `*js.Exception` (an alias for
+the runtime's event loop. A rejection becomes a `*jolt.JSError`; a
+synchronous `throw` remains a `*jolt.Exception` (an alias for
 `moejs.Exception`).
 
 A call runs the event loop until no referenced timer, immediate, task or held
@@ -163,7 +169,7 @@ program that never goes idle.
 For several calls against one JavaScript state, lease a runtime:
 
 ```go
-err := exec.Run(ctx, func(rt *js.Runtime) error {
+err := exec.Run(ctx, func(rt *jolt.Runtime) error {
 	// Module export or global.
 	config, err := rt.Get("config")
 	if err != nil {
@@ -239,11 +245,11 @@ A feature can install globals, modules or policies. `Config.FS` and
 `Config.Network` are just features:
 
 ```go
-exec, err := js.New(js.Config{
+exec, err := jolt.New(jolt.Config{
 	Source: source,
 
 	// node:fs, node:fs/promises and Buffer over one sandbox directory.
-	FS: &js.HostFS{
+	FS: &jolt.HostFS{
 		Root:  "/srv/workspaces/123",
 		Mount: "/workspace",
 		Write: false,
@@ -256,14 +262,14 @@ exec, err := js.New(js.Config{
 	},
 
 	// fetch and the Web APIs through one HTTP client.
-	Network: &js.HostNetwork{
+	Network: &jolt.HostNetwork{
 		Client: http.DefaultClient,
-		Allow:  js.AllowHosts("api.example.com", "*.example.org"),
+		Allow:  jolt.AllowHosts("api.example.com", "*.example.org"),
 	},
 
 	// Anything else.
-	Features: []js.Feature{
-		js.FeatureFunc(func(env *js.Env) (func() error, error) {
+	Features: []jolt.Feature{
+		jolt.FeatureFunc(func(env *jolt.Env) (func() error, error) {
 			return nil, env.SetFunc("now", func() int64 { return time.Now().Unix() })
 		}),
 	},
@@ -295,7 +301,7 @@ Config{
 
 ## WebAssembly
 
-js installs the browser `WebAssembly` JavaScript API, backed by
+jolt installs the browser `WebAssembly` JavaScript API, backed by
 [wazero](https://github.com/tetratelabs/wazero), by default. Build with the
 `nowasm` tag to leave it out:
 
@@ -308,10 +314,10 @@ go test -tags nowasm ./...
 > `-tags wasm` while targeting amd64/arm64 makes the standard library select its
 > wasm files and fail to compile. The API is also automatically absent when
 > cross-compiling for `GOARCH=wasm`.
-> `js.WebAssemblySupported` reports whether the feature is in the binary.
+> `jolt.WebAssemblySupported` reports whether the feature is in the binary.
 
 ```go
-exec, err := js.New(js.Config{
+exec, err := jolt.New(jolt.Config{
 	Name: "wasm.js",
 	Source: `export async function add(bytes) {
 		const { instance } = await WebAssembly.instantiate(bytes, {});
@@ -348,9 +354,9 @@ ignored; the host-managed namespace always wins.
 Each guest that imports WASI gets its environment from the Go config:
 
 ```go
-exec, err := js.New(js.Config{
-	WebAssembly: js.WebAssemblyOptions{
-		WASI: js.WebAssemblyWASIOptions{
+exec, err := jolt.New(jolt.Config{
+	WebAssembly: jolt.WebAssemblyOptions{
+		WASI: jolt.WebAssemblyWASIOptions{
 			Args:   []string{"app", "--flag"},
 			Env:    map[string]string{"MODE": "prod"},
 			FS:     os.DirFS("/srv/app"),
@@ -405,7 +411,7 @@ one runtime; `PoolSize` bounds how many run together.
 
 `Runtime` is not safe for concurrent use: moejs requires one goroutine at a
 time. Cancelling the context passed to a call is safe from another goroutine:
-it interrupts the loop and the call returns `*js.InterruptedError`.
+it interrupts the loop and the call returns `*jolt.InterruptedError`.
 
 Runtime state persists between calls that use the same pooled runtime. Set
 `NoReuse` for a fresh runtime per call, or use `NewRuntime` when the program is
@@ -415,10 +421,10 @@ still be pending in it.
 
 ## Security
 
-js passes moejs's defenses through `Config`:
+jolt passes moejs's defenses through `Config`:
 
 - `MemoryLimit` caps retained and allocated bytes; a hit is
-  `js.IsMemoryLimit(err)`.
+  `jolt.IsMemoryLimit(err)`.
 - `DisableDynamicCode` turns off `eval` and `new Function`;
   `MaxDynamicSource` caps their source length.
 - `MutableIntrinsics` is off by default, so builtins are frozen.
@@ -438,16 +444,16 @@ module loader that exposes host files or modules you did not intend to expose.
 
 ## Errors
 
-js wraps engine errors in `*js.Error` (which implements `Unwrap`), so
+jolt wraps engine errors in `*jolt.Error` (which implements `Unwrap`), so
 `errors.Is` and `errors.As` keep working. Common helpers:
 
 ```go
-js.IsException(err)    // a JavaScript throw; AsException gets it
-js.IsInterrupted(err)  // context cancellation or an explicit interrupt
-js.IsTimeout(err)      // context deadline
-js.IsCanceled(err)     // context cancellation
-js.IsMemoryLimit(err)  // Config.MemoryLimit hit
-js.JSStack(err)        // JavaScript stack trace, when there is one
+jolt.IsException(err)    // a JavaScript throw; AsException gets it
+jolt.IsInterrupted(err)  // context cancellation or an explicit interrupt
+jolt.IsTimeout(err)      // context deadline
+jolt.IsCanceled(err)     // context cancellation
+jolt.IsMemoryLimit(err)  // Config.MemoryLimit hit
+jolt.JSStack(err)        // JavaScript stack trace, when there is one
 ```
 
 `JSError` is a rejected promise's reason converted to Go. `PanicError` is a Go
@@ -455,7 +461,7 @@ panic inside a host function.
 
 ## Examples and tests
 
-Runnable examples live in [`examples/`](examples). The test suite covers
+Runnable examples live in [`demos/`](demos). The test suite covers
 exposure, access, modules, TypeScript, async/timers, rejection, timeouts,
 memory limits, `HostFS`, `HostNetwork`, pooling and custom features:
 

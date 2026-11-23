@@ -1,9 +1,9 @@
 //go:build !nowasm && !(js && wasm)
 
-// Command wasm runs a small WebAssembly command module through js.
+// Command wasm runs a small WebAssembly command module through jolt.
 //
 // The guest imports wasi_snapshot_preview1.fd_write and prints one line to
-// stdout. js loads the WASI host module automatically, so the JavaScript
+// stdout. jolt loads the WASI host module automatically, so the JavaScript
 // side passes an empty importObject; WebAssembly.WASI supplies the output
 // stream, and RunStart executes the guest's _start during instantiation.
 //
@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/malivvan/js"
+	"github.com/malivvan/jolt"
 )
 
 const source = `
@@ -28,11 +28,11 @@ export async function run(bytes) {
 }`
 
 func main() {
-	exec, err := js.New(js.Config{
+	exec, err := jolt.New(jolt.Config{
 		Name:   "hello-wasi.js",
 		Source: source,
-		WebAssembly: js.WebAssemblyOptions{
-			WASI: js.WebAssemblyWASIOptions{
+		WebAssembly: jolt.WebAssemblyOptions{
+			WASI: jolt.WebAssemblyWASIOptions{
 				Stdout:   os.Stdout,
 				RunStart: true,
 			},
